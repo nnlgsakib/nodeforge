@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package nodeforge;
+
+option go_package = "github.com/nnlgsakib/nodeforge/proto";
+
+// PluginService defines the gRPC interface for external plugins.
+service PluginService {
+  rpc Execute(PluginRequest) returns (PluginResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message PluginRequest {
+  string session_id = 1;
+  string node_type = 2;
+  bytes payload = 3;
+}
+
+message PluginResponse {
+  bool success = 1;
+  bytes result = 2;
+  string error = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+}
