@@ -1,0 +1,16 @@
+## Edge Case Hunter Findings
+
+- **Project name with path separators** — Trigger: `nforge new ../../etc/passwd` — `filepath.Join(m.workspaceRoot, name)` in `internal/session/manager.go:CreateSessionWithName()` could traverse out of workspace root; `projectName` is not sanitized
+- **Project name is empty string** — Trigger: `nforge new ""` (if args bypassed) — `cobra.ExactArgs(1)` ensures one arg but doesn't prevent empty string `""`; `filepath.Join(workspaceRoot, "")` resolves to workspaceRoot, creating .nforge in wrong directory
+- **Project name with special filesystem chars** — Trigger: `nforge new "con"` on Windows or `nforge new "project?"` — Invalid filename characters not validated, `os.MkdirAll` will fail on Windows reserved names
+- **Concurrent session creation race** — Trigger: Two simultaneous `POST /api/v1/sessions` with same project name — `CreateSessionWithName` has no locking; both goroutines check/create directories concurrently, could create duplicate sessions or corrupt state
+- **Session ID collision on restart** — Trigger: Server restarts, new process gets same PID — `generateSessionID()` returns `sess-<pid>` which is reused, returning duplicate session IDs
+- **Frontend: whitespace-only project name** — Trigger: User types spaces and clicks "New Project" — `projectName.trim()` could be empty but only checked before `onCreateProject` call in SessionExplorer; ChatPanel regex `(\S+)` prevents this for chat path
+- **Frontend: rapid double-click creates duplicate projects** — Trigger: User clicks "New Project" twice quickly — No debounce or loading state, sends two POST requests creating duplicate sessions
+- **Frontend: createProject hardcoded workspaceDir** — Trigger: CLI uses `--workspace-dir` flag but frontend always sends `workspaceDir: '.'` — Backend `req.WorkspaceDir` is ignored; `CreateSessionWithName` always uses manager's `workspaceRoot` (set to `"."` in serve.go)
+- **WebSocket 60s idle timeout** — Trigger: Client connects but sends no messages for 60+ seconds — `conn.SetReadDeadline(60s)` causes connection to be killed even if client is still active but not sending messages
+- **NoRoute handler: directory traversal via `/api/v1/../../../etc/passwd`** — Trigger: URL path with encoded `..%2F` — Only checks literal `..`, not URL-decoded path; `strings.Contains(filename, "..")` misses encoded variants
+- **NoRoute handler: directory listing** — Trigger: Request to `/assets/` (directory) — `f.Stat()` detects dir but just falls through to index.html without listing contents (this is actually fine, but the dir is opened and closed without serving a proper 403/404)
+- **InitProjectWorkspace overwrites existing config** — Trigger: Running `nforge new foo` twice — `os.WriteFile` overwrites `config.yaml`, `README.md`, `.gitignore` without checking if `.nforge/` already exists
+- **serve.go: session.NewManager(".")` uses relative path** — Trigger: Server started from different working directory — `workspaceRoot` is `"."` resolved at runtime; if cwd changes or is unexpected, sessions created in wrong location
+- **Frontend error: response not valid JSON** — Trigger: Server returns non-JSON error (e.g., 500 HTML) — `response.json()` in `createProject` will throw a SyntaxError that's caught by `catch` but error parsing assumes JSON response

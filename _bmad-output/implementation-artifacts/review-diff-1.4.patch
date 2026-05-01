@@ -1,0 +1,523 @@
+diff --git a/Dockerfile b/Dockerfile
+index 2cea7a5..182fc38 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -11,7 +11,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o nforge .
+ FROM gcr.io/distroless/static-debian12
+ 
+ COPY --from=builder /app/nforge /nforge
+-COPY --from=builder /app/frontend/dist /frontend/dist
+ 
+ EXPOSE 8080
+ 
+diff --git a/Makefile b/Makefile
+index e0f9c46..cbd498d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,10 +1,14 @@
+-.PHONY: build dev docker test clean
++.PHONY: build dev docker test clean frontend-install frontend-build
+ 
+-build:
+-	go build -o nforge .
++BINARY = nforge
++VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
++LDFLAGS = -X github.com/nlg/nfv2/cmd/nforge.version=$(VERSION)
++
++build: frontend-build
++	go build -ldflags "$(LDFLAGS)" -o $(BINARY) main.go
+ 
+ dev:
+-	gin --runtime gin
++	cd frontend && npm run dev
+ 
+ docker:
+ 	docker build -t nfv2:latest .
+@@ -13,14 +17,10 @@ test:
+ 	go test ./...
+ 
+ clean:
+-	rm -f nforge
+-	rm -rf frontend/dist
++	rm -f $(BINARY)
+ 
+ frontend-install:
+ 	cd frontend && npm install
+ 
+-frontend-dev:
+-	cd frontend && npm run dev
+-
+ frontend-build:
+ 	cd frontend && npm run build
+diff --git a/cmd/nforge/root.go b/cmd/nforge/root.go
+index 4128812..7f38c82 100644
+--- a/cmd/nforge/root.go
++++ b/cmd/nforge/root.go
+@@ -1,27 +1,34 @@
+ package nforge
+ 
+ import (
+-	"github.com/gin-gonic/gin"
++	"os"
++
+ 	"github.com/spf13/cobra"
+ )
+ 
++var version = "dev" // Set via ldflags at build time
++var verboseMode bool
++
+ var rootCmd = &cobra.Command{
+ 	Use:   "nforge",
+-	Short: "NodeForge - Visual AI Workflow Engine",
+-	Long:  `NodeForge (nfv2) is a visual AI workflow engine with n8n-style graphs, LLM integration, and a Go plugin system.`,
++	Short: "NodeForge OS - Spec-driven development workbench",
++	Version: version,
+ }
+ 
+ func init() {
+-	rootCmd.PersistentFlags().StringP("config", "c", "", "Config file path")
++	// Persistent flags
++	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", getEnvBool("NFORGE_VERBOSE", false), "Enable debug logging (env: NFORGE_VERBOSE)")
++
++	// Register subcommands
++	rootCmd.AddCommand(serveCmd)
+ }
+ 
+-func RegisterRoutes(r *gin.Engine) {
+-	api := r.Group("/api/v1")
+-	{
+-		api.GET("/health", func(c *gin.Context) {
+-			c.JSON(200, gin.H{"status": "ok"})
+-		})
++func getEnvBool(key string, defaultVal bool) bool {
++	v := os.Getenv(key)
++	if v == "" {
++		return defaultVal
+ 	}
++	return v == "true" || v == "1" || v == "yes"
+ }
+ 
+ func Execute() error {
+diff --git a/cmd/nforge/serve.go b/cmd/nforge/serve.go
+index 3c50b61..cea373a 100644
+--- a/cmd/nforge/serve.go
++++ b/cmd/nforge/serve.go
+@@ -1,48 +1,308 @@
+ package nforge
+ 
+ import (
++	"context"
+ 	"embed"
++	"fmt"
++	"io"
+ 	"io/fs"
+ 	"net/http"
++	"os"
++	"os/signal"
++	"strings"
++	"syscall"
++	"time"
+ 
+ 	"github.com/gin-gonic/gin"
++	"github.com/gorilla/websocket"
+ 	"github.com/spf13/cobra"
+ )
+ 
+-var distFS embed.FS
++var (
++	servePort string
++	distFS    embed.FS
++	frontendFS fs.FS
++	websocketUpgrader = websocket.Upgrader{
++		ReadBufferSize:  1024,
++		WriteBufferSize: 1024,
++		CheckOrigin: func(r *http.Request) bool {
++			origin := r.Header.Get("Origin")
++			return origin == "http://localhost:5173" || origin == "http://localhost:"+servePort
++		},
++	}
++)
+ 
+-func SetDistFS(fs embed.FS) {
+-	distFS = fs
++func SetDistFS(embeddedFS embed.FS) {
++	distFS = embeddedFS
++	// Create sub-FS rooted at frontend/dist to strip the path prefix
++	subFS, err := fs.Sub(distFS, "frontend/dist")
++	if err != nil {
++		fmt.Printf("SetDistFS: Failed to create sub-FS: %v\n", err)
++		frontendFS = nil
++		return
++	}
++	frontendFS = subFS
+ }
+ 
+ var serveCmd = &cobra.Command{
+ 	Use:   "serve",
+-	Short: "Start the NodeForge server",
+-	Run: func(cmd *cobra.Command, args []string) {
+-		r := gin.Default()
++	Short: "Start the NodeForge web UI + API server",
++	Long:  "Starts the Gin server with REST API, WebSocket hub, and embedded React frontend",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		return runServer()
++	},
++}
+ 
+-		RegisterRoutes(r)
++func init() {
++	serveCmd.Flags().StringVar(&servePort, "port", "8080", "Port to run the server on (default: 8080)")
++}
+ 
+-		dist, err := fs.Sub(distFS, "frontend/dist")
++func validatePort(port string) bool {
++	for _, c := range port {
++		if c < '0' || c > '9' {
++			return false
++		}
++	}
++	if port == "" {
++		return false
++	}
++	return true
++}
++
++func runServer() error {
++	startTime := time.Now()
++
++	// Validate port
++	if !validatePort(servePort) {
++		return fmt.Errorf("invalid port: %s (must be numeric)", servePort)
++	}
++
++	// Set Gin mode
++	gin.SetMode(gin.ReleaseMode)
++	if verboseMode {
++		gin.SetMode(gin.DebugMode)
++	}
++
++	// Initialize Gin router with middleware
++	r := gin.New()
++	r.Use(gin.Recovery())
++	r.Use(gin.Logger())
++
++	// CORS middleware for dev server compatibility
++	r.Use(func(c *gin.Context) {
++		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
++		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
++		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
++		if c.Request.Method == "OPTIONS" {
++			c.AbortWithStatus(204)
++			return
++		}
++		c.Next()
++	})
++
++	// Register API routes
++	api := r.Group("/api/v1")
++	{
++		api.GET("/sessions", func(c *gin.Context) {
++			c.JSON(200, gin.H{"message": "sessions endpoint"})
++		})
++		api.GET("/skills", func(c *gin.Context) {
++			c.JSON(200, gin.H{"message": "skills endpoint"})
++		})
++		api.GET("/config", func(c *gin.Context) {
++			c.JSON(200, gin.H{"message": "config endpoint"})
++		})
++	}
++
++	// WebSocket endpoint
++	r.GET("/ws", func(c *gin.Context) {
++		conn, err := websocketUpgrader.Upgrade(c.Writer, c.Request, nil)
+ 		if err != nil {
+-			panic(err)
++			return
++		}
++		defer conn.Close()
++		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
++		conn.SetPongHandler(func(string) error {
++			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
++			return nil
++		})
++		for {
++			_, _, err := conn.ReadMessage()
++			if err != nil {
++				break
++			}
++		}
++	})
++
++	// Health check endpoint
++	r.GET("/healthz", func(c *gin.Context) {
++		c.JSON(200, gin.H{
++			"status":    "ok",
++			"timestamp": time.Now().UTC().Format(time.RFC3339),
++			"version":   version,
++		})
++	})
++
++	// Readiness check (Subtask 4.3)
++	r.GET("/readyz", func(c *gin.Context) {
++		status := "ready"
++		httpStatus := 200
++		checks := gin.H{}
++		// Check if Gin server is up (always true if we're handling the request)
++		checks["gin_server"] = "up"
++		// Check if frontend is embedded and accessible
++		if frontendFS != nil {
++			checks["frontend_embedded"] = "ok"
++		} else {
++			checks["frontend_embedded"] = "missing"
++			status = "not ready"
++			httpStatus = 503
+ 		}
+-		r.StaticFS("/assets", http.FS(dist))
++		c.JSON(httpStatus, gin.H{
++			"status": status,
++			"checks": checks,
++		})
++	})
++
++	// Liveness check (Subtask 4.3)
++	r.GET("/livez", func(c *gin.Context) {
++		c.JSON(200, gin.H{
++			"status":    "alive",
++			"uptime":    time.Since(startTime).String(),
++			"timestamp": time.Now().UTC().Format(time.RFC3339),
++		})
++	})
+ 
++	// Metrics endpoint (Prometheus placeholder)
++	r.GET("/metrics", func(c *gin.Context) {
++		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\n")
++	})
++
++	// Serve embedded frontend (Task 3)
++	if frontendFS != nil {
++		// Serve static assets and files from embedded dist
+ 		r.NoRoute(func(c *gin.Context) {
+-			data, err := distFS.ReadFile("frontend/dist/index.html")
+-			if err != nil {
+-				c.AbortWithStatus(404)
++			// Skip API and WS routes
++			path := c.Request.URL.Path
++			if path == "/ws" || (len(path) >= 7 && path[:7] == "/api/v1") {
++				c.Next()
+ 				return
+ 			}
+-			c.Data(200, "text/html; charset=utf-8", data)
++
++			// Sanitize path: reject any path with ".." to prevent traversal
++			filename := strings.TrimPrefix(path, "/")
++			if strings.Contains(filename, "..") {
++				c.String(400, "Bad request")
++				return
++			}
++
++			// Try to open requested file from embedded FS
++			if filename == "" {
++				filename = "index.html"
++			}
++			f, err := frontendFS.Open(filename)
++			if err == nil {
++				defer f.Close()
++				// Check if it's a directory
++				info, err := f.Stat()
++				if err != nil {
++					c.String(500, "Internal server error")
++					return
++				}
++				if info.IsDir() {
++					f.Close()
++					// Fall through to index.html fallback
++				} else {
++					// Read file contents and write to response
++					data, err := io.ReadAll(f)
++					if err != nil {
++						c.String(500, "Internal server error")
++						return
++					}
++					// Set content type based on file extension
++					contentType := "application/octet-stream"
++					switch {
++					case strings.HasSuffix(filename, ".html"):
++						contentType = "text/html"
++					case strings.HasSuffix(filename, ".css"):
++						contentType = "text/css"
++					case strings.HasSuffix(filename, ".js"):
++						contentType = "application/javascript"
++					case strings.HasSuffix(filename, ".ico"):
++						contentType = "image/x-icon"
++					case strings.HasSuffix(filename, ".png"):
++						contentType = "image/png"
++					case strings.HasSuffix(filename, ".jpg"), strings.HasSuffix(filename, ".jpeg"):
++						contentType = "image/jpeg"
++					case strings.HasSuffix(filename, ".svg"):
++						contentType = "image/svg+xml"
++					case strings.HasSuffix(filename, ".json"):
++						contentType = "application/json"
++					case strings.HasSuffix(filename, ".woff"):
++						contentType = "font/woff"
++					case strings.HasSuffix(filename, ".woff2"):
++						contentType = "font/woff2"
++					case strings.HasSuffix(filename, ".ttf"):
++						contentType = "font/ttf"
++					}
++					c.Data(200, contentType, data)
++					return
++				}
++			}
++
++			// Fallback to index.html for SPA routing
++			indexFile, err := frontendFS.Open("index.html")
++			if err == nil {
++				defer indexFile.Close()
++				data, err := io.ReadAll(indexFile)
++				if err != nil {
++					c.String(500, "Internal server error")
++					return
++				}
++				c.Header("Content-Type", "text/html")
++				c.Data(200, "text/html", data)
++				return
++			}
++
++			c.String(404, "Frontend not found. Build the frontend first with npm run build.")
+ 		})
++	} else {
++		// No embedded FS, serve placeholder
++		r.NoRoute(func(c *gin.Context) {
++			c.String(503, "Frontend not built. Run 'npm run build' in the frontend directory.")
++		})
++	}
+ 
+-		r.Run(":8080")
+-	},
+-}
++	// Start server
++	srv := &http.Server{
++		Addr:    ":" + servePort,
++		Handler: r,
++	}
+ 
+-func init() {
+-	serveCmd.Flags().IntP("port", "p", 8080, "Port to listen on")
+-	rootCmd.AddCommand(serveCmd)
++	// Graceful shutdown
++	quit := make(chan os.Signal, 1)
++	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
++
++	errCh := make(chan error, 1)
++	go func() {
++		fmt.Printf("Starting server on :%s\n", servePort)
++		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++			errCh <- err
++			return
++		}
++	}()
++
++	select {
++	case <-quit:
++		fmt.Println("Shutting down server...")
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		if err := srv.Shutdown(ctx); err != nil {
++			return fmt.Errorf("server forced to shutdown: %w", err)
++		}
++		fmt.Println("Server exited")
++		return nil
++	case err := <-errCh:
++		return fmt.Errorf("server failed to start: %w", err)
++	}
+ }
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 961ae3f..1c2f4b2 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -8,7 +8,8 @@ services:
+     environment:
+       - PORT=8080
+     depends_on:
+-      - ollama
++      ollama:
++        condition: service_healthy
+ 
+   ollama:
+     image: ollama/ollama:latest
+@@ -16,6 +17,12 @@ services:
+       - "11434:11434"
+     volumes:
+       - ollama_data:/root/.ollama
++    restart: unless-stopped
++    healthcheck:
++      test: ["CMD", "curl", "-f", "http://localhost:11434/api/health"]
++      interval: 10s
++      timeout: 5s
++      retries: 5
+ 
+ volumes:
+   ollama_data:
+diff --git a/go.mod b/go.mod
+index bfbea54..a7df763 100644
+--- a/go.mod
++++ b/go.mod
+@@ -5,6 +5,7 @@ go 1.26.2
+ require (
+ 	github.com/gin-gonic/gin v1.11.0
+ 	github.com/spf13/cobra v1.10.2
++	google.golang.org/protobuf v1.36.11
+ )
+ 
+ require (
+@@ -18,6 +19,7 @@ require (
+ 	github.com/go-playground/validator/v10 v10.27.0 // indirect
+ 	github.com/goccy/go-json v0.10.2 // indirect
+ 	github.com/goccy/go-yaml v1.18.0 // indirect
++	github.com/gorilla/websocket v1.5.3 // indirect
+ 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+ 	github.com/json-iterator/go v1.1.12 // indirect
+ 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+@@ -40,5 +42,4 @@ require (
+ 	golang.org/x/sys v0.35.0 // indirect
+ 	golang.org/x/text v0.27.0 // indirect
+ 	golang.org/x/tools v0.34.0 // indirect
+-	google.golang.org/protobuf v1.36.11 // indirect
+ )
+diff --git a/go.sum b/go.sum
+index 37392d8..9687f9e 100644
+--- a/go.sum
++++ b/go.sum
+@@ -29,6 +29,8 @@ github.com/goccy/go-yaml v1.18.0/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7Lk
+ github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+ github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
+ github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
++github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
++github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
+ github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
+ github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
+diff --git a/main.go b/main.go
+index 8eacc3f..6e64ac4 100644
+--- a/main.go
++++ b/main.go
+@@ -2,6 +2,9 @@ package main
+ 
+ import (
+ 	"embed"
++	"fmt"
++	"os"
++
+ 	"github.com/nnlgsakib/nodeforge/cmd/nforge"
+ )
+ 
+@@ -10,5 +13,8 @@ var distFS embed.FS
+ 
+ func main() {
+ 	nforge.SetDistFS(distFS)
+-	_ = nforge.Execute()
++	if err := nforge.Execute(); err != nil {
++		fmt.Fprintf(os.Stderr, "error: %v\n", err)
++		os.Exit(1)
++	}
+ }

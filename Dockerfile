@@ -11,7 +11,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o nforge .
 FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /app/nforge /nforge
-COPY --from=builder /app/frontend/dist /frontend/dist
 
 EXPOSE 8080
 

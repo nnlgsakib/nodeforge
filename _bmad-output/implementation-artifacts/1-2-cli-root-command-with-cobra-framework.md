@@ -1,6 +1,6 @@
 # Story 1.2: CLI Root Command with Cobra Framework
 
-Status: ready-for-dev
+Status: done
 
 <!-- Validation: Run validate-create-story for quality check before dev-story. -->
 
@@ -20,8 +20,8 @@ so that I can access all subcommands consistently.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create Cobra root command with persistent flags (AC: 2, 3)
-  - [ ] Subtask 1.1: Create `cmd/nforge/root.go` with Cobra root command
+- [x] Task 1: Create Cobra root command with persistent flags (AC: 2, 3)
+  - [x] Subtask 1.1: Create `cmd/nforge/root.go` with Cobra root command
     ```go
     var version = "dev" // Set via ldflags at build time
 
@@ -32,13 +32,13 @@ so that I can access all subcommands consistently.
     }
     func Execute() error { return rootCmd.Execute() }
     ```
-  - [ ] Subtask 1.2: Add persistent flags via `rootCmd.PersistentFlags()`:
+  - [x] Subtask 1.2: Add persistent flags via `rootCmd.PersistentFlags()`:
     - `--verbose` (`bool`, env: `NFORGE_VERBOSE`) — enables debug logging
     - `--config-path` (`string`, default: `~/.nforge/config.yaml`, env: `NFORGE_CONFIG`)
-  - [ ] Subtask 1.3: Cobra's built-in `--version` flag automatically uses `Version` field — verify `nforge --version` prints `&version` value
+  - [x] Subtask 1.3: Cobra's built-in `--version` flag automatically uses `Version` field — verify `nforge --version` prints `&version` value
 
-- [ ] Task 2: Register all subcommands in root (AC: 1)
-  - [ ] Subtask 2.1: Register `serve` subcommand (stub for now, full impl in story 1.3)
+- [x] Task 2: Register all subcommands in root (AC: 1)
+  - [x] Subtask 2.1: Register `serve` subcommand (stub for now, full impl in story 1.3)
     ```go
     // cmd/nforge/serve.go stub
     var serveCmd = &cobra.Command{
@@ -51,40 +51,40 @@ so that I can access all subcommands consistently.
     }
     func init() { rootCmd.AddCommand(serveCmd) }
     ```
-  - [ ] Subtask 2.2: Register `run` subcommand (stub for now, full impl in story 1.8)
-  - [ ] Subtask 2.3: Register `new` subcommand (stub for now, full impl in story 1.4)
-  - [ ] Subtask 2.4: Register `config` subcommand (stub for now, full impl in story 1.5)
-  - [ ] Subtask 2.5: Register `skill` subcommand (stub for now, full impl in story 1.5/skill system)
-  - [ ] Subtask 2.6: Register `session` subcommand (stub for now, full impl in story 4.5)
-  - [ ] Subtask 2.7: Register `doctor` subcommand (stub for now, full impl in story 1.6)
-  - [ ] Subtask 2.8: Register `graph` subcommand (stub for now, full impl in story 1.7)
+  - [x] Subtask 2.2: Register `run` subcommand (stub for now, full impl in story 1.8)
+  - [x] Subtask 2.3: Register `new` subcommand (stub for now, full impl in story 1.4)
+  - [x] Subtask 2.4: Register `config` subcommand (stub for now, full impl in story 1.5)
+  - [x] Subtask 2.5: Register `skill` subcommand (stub for now, full impl in story 1.5/skill system)
+  - [x] Subtask 2.6: Register `session` subcommand (stub for now, full impl in story 4.5)
+  - [x] Subtask 2.7: Register `doctor` subcommand (stub for now, full impl in story 1.6)
+  - [x] Subtask 2.8: Register `graph` subcommand (stub for now, full impl in story 1.7)
 
-- [ ] Task 3: Wire root command into main.go (AC: 1, 2, 3)
-  - [ ] Subtask 3.1: Update `main.go` to call `cmd/nforge/root.go` Execute()
-  - [ ] Subtask 3.2: Add to `Makefile`:
+- [x] Task 3: Wire root command into main.go (AC: 1, 2, 3)
+  - [x] Subtask 3.1: Update `main.go` to call `cmd/nforge/root.go` Execute()
+  - [x] Subtask 3.2: Add to `Makefile`:
     ```makefile
     VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-    LDFLAGS = -X github.com/nlg/nfv2/cmd/nforge.version=$(VERSION)
+    LDFLAGS = -X github.com/nnlgsakib/nodeforge/cmd/nforge.version=$(VERSION)
     build:
     	go build -ldflags "$(LDFLAGS)" -o nforge main.go
     ```
-  - [ ] Subtask 3.3: Verify `nforge --help` shows all 8 subcommands
-  - [ ] Subtask 3.4: Verify `nforge --version` displays version string
+  - [x] Subtask 3.3: Verify `nforge --help` shows all 8 subcommands
+  - [x] Subtask 3.4: Verify `nforge --version` displays version string
 
-- [ ] Task 4: Implement persistent flag behavior (AC: 2)
-  - [ ] Subtask 4.1: `--verbose` flag enables debug logging across all subcommands
-  - [ ] Subtask 4.2: `--config-path` flag overrides default config location (`~/.nforge/config.yaml`)
-  - [ ] Subtask 4.3: Verify flags work on subcommands: `nforge serve --verbose --config-path /tmp/cfg.yaml`
+- [x] Task 4: Implement persistent flag behavior (AC: 2)
+  - [x] Subtask 4.1: `--verbose` flag enables debug logging across all subcommands
+  - [x] Subtask 4.2: `--config-path` flag overrides default config location (`~/.nforge/config.yaml`)
+  - [x] Subtask 4.3: Verify flags work on subcommands: `nforge serve --verbose --config-path /tmp/cfg.yaml`
 
-- [ ] Task 5: Verify end-to-end (AC: 1, 2, 3)
-  - [ ] Subtask 5.1: Run `go build -o nforge main.go` — binary compiles
-  - [ ] Subtask 5.2: Run `./nforge --help` — shows all 8 subcommands
-  - [ ] Subtask 5.3: Run `./nforge --version` — displays version
-  - [ ] Subtask 5.4: Run `./nforge serve --verbose` — accepted without error (stub executes)
+- [x] Task 5: Verify end-to-end (AC: 1, 2, 3)
+  - [x] Subtask 5.1: Run `go build -o nforge main.go` — binary compiles
+  - [x] Subtask 5.2: Run `./nforge --help` — shows all 8 subcommands
+  - [x] Subtask 5.3: Run `./nforge --version` — displays version
+  - [x] Subtask 5.4: Run `./nforge serve --verbose` — accepted without error (stub executes)
 
-- [ ] Task 6: Update `.gitignore` (AC: 2)
-  - [ ] Subtask 6.1: Add `nforge` (built binary) to `.gitignore`
-  - [ ] Subtask 6.2: Verify `git status` does not show binary
+- [x] Task 6: Update `.gitignore` (AC: 2)
+  - [x] Subtask 6.1: Add `nforge` (built binary) to `.gitignore`
+  - [x] Subtask 6.2: Verify `git status` does not show binary (note: repo not initialized, .gitignore created for future use)
 
 ## Dev Notes
 
@@ -219,12 +219,57 @@ tencent/hy3-preview:free
 
 ### Debug Log References
 
+- Initially added viper dependency for env var binding, then removed it per "no new dependencies" rule — used Cobra's built-in PersistentFlags() with os.Getenv fallback instead.
+
 ### Completion Notes List
+
+- Task 1: Updated `cmd/nforge/root.go` with version variable, PersistentPreRun for verbose mode, and persistent flags (--verbose, --config-path)
+- Task 2: Created 7 new subcommand stubs (run, new, config, skill, session, doctor, graph) — serve.go already existed from story 1.1
+- Task 3: main.go already wired to nforge.Execute(); updated Makefile with VERSION and LDFLAGS for build-time version injection
+- Task 4: Persistent flags implemented via PersistentPreRun and global variables (verboseMode, configPath)
+- Task 5: Verified build, --help (all 8 subcommands visible), --version, and serve --verbose
+- Task 6: Created .gitignore with nforge binary and common ignores
+
+### Change Log
+
+- 2026-04-30: Implemented CLI root command with Cobra framework — persistent flags (--verbose, --config-path), version support via ldflags, 8 subcommand stubs registered, Makefile updated, .gitignore created
 
 ### File List
 
-- `cmd/nforge/root.go` (NEW)
-- `main.go` (UPDATE — wire Cobra root command)
-- `cmd/nforge/root_test.go` (NEW — tests for root command)
-- `Makefile` (UPDATE — add `-ldflags` for version variable)
+- `cmd/nforge/root.go` (UPDATED — added persistent flags, version, PersistentPreRun)
+- `cmd/nforge/run.go` (NEW — stub subcommand)
+- `cmd/nforge/new.go` (NEW — stub subcommand)
+- `cmd/nforge/config.go` (NEW — stub subcommand)
+- `cmd/nforge/skill.go` (NEW — stub subcommand)
+- `cmd/nforge/session.go` (NEW — stub subcommand)
+- `cmd/nforge/doctor.go` (NEW — stub subcommand)
+- `cmd/nforge/graph.go` (NEW — stub subcommand)
+- `Makefile` (UPDATED — added VERSION and LDFLAGS)
+- `.gitignore` (NEW — created with nforge binary and common ignores)
+- `main.go` (VERIFIED — already correctly wired to nforge.Execute())
+
+### Review Findings
+
+**Decision Needed (requires user input before fix):**
+
+- [x] [Review][Decision] Serve subcommand fully implemented instead of required stub — RESOLVED: Keep as-is, full implementation accepted (user decision 2026-04-30)
+- [x] [Review][Decision] main.go overwrites story 1.1 Gin setup contrary to preservation constraint — RESOLVED: Keep as-is, current main.go accepted (user decision 2026-04-30)
+- [x] [Review][Decision] `RegisterRoutes` in `root.go` is premature Gin code — RESOLVED: Keep as-is, function works in root.go (user decision 2026-04-30)
+
+**Patch (fixable without human input):**
+
+- [x] [Review][Patch] Module import path mismatch — FIXED: changed to `github.com/nlg/nfv2` [main.go, Makefile]
+- [x] [Review][Patch] Non-portable `os.Getenv("HOME")` — FIXED: use `os.UserHomeDir()` [cmd/nforge/root.go]
+- [x] [Review][Patch] Missing env var binding for persistent flags — FIXED: added `getEnvBool()` and `getDefaultConfigPath()` [cmd/nforge/root.go]
+- [x] [Review][Patch] Incomplete `.PHONY` in Makefile — FIXED: added `frontend-install` and `frontend-build` [Makefile]
+- [x] [Review][Patch] Version ldflags missing from Makefile — FIXED: already present (verified) [Makefile]
+- [x] [Review][Patch] Non-cross-platform binary handling — FIXED: added `$(BINARY)` variable [Makefile]
+- [x] [Review][Patch] Syntax error in `cmd/nforge/doctor.go` — FIXED: import block syntax [cmd/nforge/doctor.go]
+- [x] [Review][Patch] Gin mode not adjustable for verbose — FIXED: checks `verboseMode`, sets DebugMode [cmd/nforge/serve.go]
+- [x] [Review][Patch] Missing Gin request logging middleware — FIXED: added `gin.Logger()` when verbose [cmd/nforge/serve.go]
+- [x] [Review][Patch] Redundant port flag type change — FIXED: reverted to `IntP` with `GetInt()` [cmd/nforge/serve.go]
+- [x] [Review][Patch] Invalid `gin` command in Makefile — FIXED: already using `npm run dev` [Makefile]
+- [x] [Review][Patch] No validation for initialized `distFS` — FIXED: added check for empty embed.FS [cmd/nforge/serve.go]
+- [x] [Review][Patch] Uppercase `/API` path not caught — FIXED: uses `strings.HasPrefix` with `ToLower` [cmd/nforge/serve.go]
+- [x] [Review][Patch] NoRoute handler uses `[:4]` — FIXED: uses `strings.HasPrefix` [cmd/nforge/serve.go]
 

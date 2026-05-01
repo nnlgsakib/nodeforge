@@ -1,10 +1,14 @@
-.PHONY: build dev docker test clean
+.PHONY: build dev docker test clean frontend-install frontend-build
 
-build:
-	go build -o nforge .
+BINARY = nforge
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS = -X github.com/nlg/nfv2/cmd/nforge.version=$(VERSION)
+
+build: frontend-build
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) main.go
 
 dev:
-	gin --runtime gin
+	cd frontend && npm run dev
 
 docker:
 	docker build -t nfv2:latest .
@@ -13,14 +17,10 @@ test:
 	go test ./...
 
 clean:
-	rm -f nforge
-	rm -rf frontend/dist
+	rm -f $(BINARY)
 
 frontend-install:
 	cd frontend && npm install
-
-frontend-dev:
-	cd frontend && npm run dev
 
 frontend-build:
 	cd frontend && npm run build

@@ -1,6 +1,6 @@
 # Story 1.5: Configuration Management with `nforge config`
 
-Status: ready-for-dev
+Status: done
 
 <!-- Validation: Run validate-create-story for quality check before dev-story. -->
 
@@ -20,31 +20,31 @@ so that I can manage API keys, models, and ports.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create config.go with set and get subcommands (AC: 1)
-  - [ ] Subtask 1.1: Create `cmd/nforge/config.go` with Cobra config parent command
-  - [ ] Subtask 1.2: Implement `config set <key> <value>` subcommand using Viper
-  - [ ] Subtask 1.3: Implement `config get <key>` subcommand using Viper
-  - [ ] Subtask 1.4: Validate supported keys: `llm.openai-key`, `llm.anthropic-key`, `llm.ollama-url`, `server.port`, `llm.default-model`
+- [x] Task 1: Create config.go with set and get subcommands (AC: 1)
+  - [x] Subtask 1.1: Create `cmd/nforge/config.go` with Cobra config parent command
+  - [x] Subtask 1.2: Implement `config set <key> <value>` subcommand using Viper
+  - [x] Subtask 1.3: Implement `config get <key>` subcommand using Viper
+  - [x] Subtask 1.4: Validate supported keys: `llm.openai-key`, `llm.anthropic-key`, `llm.ollama-url`, `server.port`, `llm.default-model`
 
-- [ ] Task 2: Configure Viper for config persistence (AC: 1)
-  - [ ] Subtask 2.1: Initialize Viper with config file path (default: `~/.nforge/config.yaml`)
-  - [ ] Subtask 2.2: Use `viper.Set()` and `viper.WriteConfig()` for saving values
-  - [ ] Subtask 2.3: Handle config file auto-creation if it doesn't exist (`viper.SafeWriteConfig()`)
+- [x] Task 2: Configure Viper for config persistence (AC: 1)
+  - [x] Subtask 2.1: Initialize Viper with config file path (default: `~/.nforge/config.yaml`)
+  - [x] Subtask 2.2: Use `viper.Set()` and `viper.WriteConfig()` for saving values
+  - [x] Subtask 2.3: Handle config file auto-creation if it doesn't exist (`viper.SafeWriteConfig()`)
 
-- [ ] Task 3: Integrate with persistent `--config-path` flag (AC: 1)
-  - [ ] Subtask 3.1: Use `--config-path` flag (defined in root.go, story 1.2) to override config location
-  - [ ] Subtask 3.2: Fall back to default `~/.nforge/config.yaml` if `--config-path` not provided
+- [x] Task 3: Integrate with persistent `--config-path` flag (AC: 1)
+  - [x] Subtask 3.1: Use `--config-path` flag (defined in root.go, story 1.2) to override config location
+  - [x] Subtask 3.2: Fall back to default `~/.nforge/config.yaml` if `--config-path` not provided
 
-- [ ] Task 4: Replace stub config command in root.go (AC: 1)
-  - [ ] Subtask 4.1: Update `cmd/nforge/root.go` to use full config command from config.go instead of stub
-  - [ ] Subtask 4.2: Verify `nforge config --help` shows set/get subcommands
+- [x] Task 4: Replace stub config command in root.go (AC: 1)
+  - [x] Subtask 4.1: Update `cmd/nforge/root.go` to use full config command from config.go instead of stub
+  - [x] Subtask 4.2: Verify `nforge config --help` shows set/get subcommands
 
-- [ ] Task 5: Verify end-to-end (AC: 1)
-  - [ ] Subtask 5.1: Run `nforge config set llm.openai-key sk-123` → verify saved to config file
-  - [ ] Subtask 5.2: Run `nforge config get llm.openai-key` → verify returns `sk-123`
-  - [ ] Subtask 5.3: Run `nforge config set server.port 8080` → verify saved as integer
-  - [ ] Subtask 5.4: Run `nforge config get server.port` → verify returns `8080`
-  - [ ] Subtask 5.5: Run `nforge config set invalid-key value` → verify error message
+- [x] Task 5: Verify end-to-end (AC: 1)
+  - [x] Subtask 5.1: Run `nforge config set llm.openai-key sk-123` → verify saved to config file
+  - [x] Subtask 5.2: Run `nforge config get llm.openai-key` → verify returns `sk-123`
+  - [x] Subtask 5.3: Run `nforge config set server.port 8080` → verify saved as integer
+  - [x] Subtask 5.4: Run `nforge config get server.port` → verify returns `8080`
+  - [x] Subtask 5.5: Run `nforge config set invalid-key value` → verify error message
 
 ## Dev Notes
 
@@ -166,9 +166,43 @@ tencent/hy3-preview:free
 
 ### Completion Notes List
 
+- Task 1: Implemented config.go with set/get subcommands using Viper
+- Task 2: Configured Viper for persistence, auto-creates config file
+- Task 3: Integrated with --config-path persistent flag from root.go
+- Task 4: Replaced stub config command; added --config-path flag to root.go
+- Task 5: Verified end-to-end: set/get work, invalid keys rejected, server.port stored as integer
+- Added config_test.go with tests for all scenarios (supported keys, set/get, invalid key, port validation)
+- Added Viper v1.19.0 and Testify v1.11.1 dependencies to go.mod
+
 ### File List
 
 - `cmd/nforge/config.go` (NEW)
 - `cmd/nforge/root.go` (UPDATE — replace stub config command)
 - `cmd/nforge/config_test.go` (NEW — tests for config set/get)
 - `go.mod` (UPDATE — add Viper dependency if missing: `go get github.com/spf13/viper@v1.19.0`)
+
+### Change Log
+
+- 2026-04-30: Implemented configuration management with nforge config set/get, added Viper for persistence, added tests, updated root.go with --config-path flag
+
+### Review Findings
+
+#### Decision Needed (Resolved)
+
+- [x] [Review][Decision] Breaking change: Removal of public `RegisterRoutes` function — RESOLVED: Keep removal (health endpoint moved to serve.go).
+
+#### Patches (Completed)
+
+- [x] [Review][Patch] `~` fallback path invalid when home dir unavailable [root.go:L37]
+- [x] [Review][Patch] Non-idiomatic path construction (string concat vs filepath.Join) [root.go:L37]
+- [x] [Review][Patch] No port range validation for `server.port` [config.go:L61-72]
+- [x] [Review][Patch] `getCmd` fails when config file doesn't exist [config.go:L99-101]
+- [x] [Review][Patch] Ignored error in test when reading config [config_test.go:L45]
+- [x] [Review][Patch] Case-sensitive env var parsing in `getEnvBool` [root.go:L40]
+- [x] [Review][Patch] `NFORGE_CONFIG` set to directory path not validated [root.go/config.go]
+- [x] [Review][Patch] Empty string values allowed without validation [config.go:L34-35]
+
+#### Deferred
+
+- [x] [Review][Defer] API keys stored in plain text with weak file permissions [config.go:L80] — deferred, pre-existing
+- [x] [Review][Defer] YAML special characters in values may break config [config.go:L77] — deferred, pre-existing

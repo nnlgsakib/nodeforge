@@ -2,6 +2,9 @@ package main
 
 import (
 	"embed"
+	"fmt"
+	"os"
+
 	"github.com/nnlgsakib/nodeforge/cmd/nforge"
 )
 
@@ -10,5 +13,8 @@ var distFS embed.FS
 
 func main() {
 	nforge.SetDistFS(distFS)
-	_ = nforge.Execute()
+	if err := nforge.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }

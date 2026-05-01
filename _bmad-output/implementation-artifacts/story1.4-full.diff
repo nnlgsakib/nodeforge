@@ -1,0 +1,854 @@
+warning: in the working copy of 'cmd/nforge/serve.go', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+diff --git a/cmd/nforge/serve.go b/cmd/nforge/serve.go
+index 3c50b61..f0ea193 100644
+--- a/cmd/nforge/serve.go
++++ b/cmd/nforge/serve.go
+@@ -1,48 +1,300 @@
+ package nforge
+ 
+ import (
++	"context"
+ 	"embed"
++	"fmt"
++	"io"
+ 	"io/fs"
+ 	"net/http"
++	"os"
++	"os/signal"
++	"strings"
++	"syscall"
++	"time"
+ 
+ 	"github.com/gin-gonic/gin"
++	"github.com/gorilla/websocket"
++	"github.com/nnlgsakib/nodeforge/internal/canvas"
++	"github.com/nnlgsakib/nodeforge/internal/session"
+ 	"github.com/spf13/cobra"
+ )
+ 
+-var distFS embed.FS
++var (
++	servePort string
++	distFS    embed.FS
++	frontendFS fs.FS
++	websocketUpgrader = websocket.Upgrader{
++		ReadBufferSize:  1024,
++		WriteBufferSize: 1024,
++		CheckOrigin: func(r *http.Request) bool {
++			origin := r.Header.Get("Origin")
++			return origin == "http://localhost:5173" || origin == "http://localhost:"+servePort
++		},
++	}
++)
+ 
+-func SetDistFS(fs embed.FS) {
+-	distFS = fs
++func SetDistFS(embeddedFS embed.FS) {
++	distFS = embeddedFS
++	// Create sub-FS rooted at frontend/dist to strip the path prefix
++	subFS, err := fs.Sub(distFS, "frontend/dist")
++	if err != nil {
++		fmt.Printf("SetDistFS: Failed to create sub-FS: %v\n", err)
++		frontendFS = nil
++		return
++	}
++	frontendFS = subFS
+ }
+ 
+ var serveCmd = &cobra.Command{
+ 	Use:   "serve",
+-	Short: "Start the NodeForge server",
+-	Run: func(cmd *cobra.Command, args []string) {
+-		r := gin.Default()
++	Short: "Start the NodeForge web UI + API server",
++	Long:  "Starts the Gin server with REST API, WebSocket hub, and embedded React frontend",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		return runServer()
++	},
++}
++
++func init() {
++	serveCmd.Flags().StringVar(&servePort, "port", "8080", "Port to run the server on (default: 8080)")
++}
++
++func validatePort(port string) bool {
++	for _, c := range port {
++		if c < '0' || c > '9' {
++			return false
++		}
++	}
++	if port == "" {
++		return false
++	}
++	return true
++}
++
++func runServer() error {
++	startTime := time.Now()
++
++	// Validate port
++	if !validatePort(servePort) {
++		return fmt.Errorf("invalid port: %s (must be numeric)", servePort)
++	}
++
++	// Set Gin mode
++	gin.SetMode(gin.ReleaseMode)
++	if verboseMode {
++		gin.SetMode(gin.DebugMode)
++	}
+ 
+-		RegisterRoutes(r)
++	// Initialize Gin router with middleware
++	r := gin.New()
++	r.Use(gin.Recovery())
++	r.Use(gin.Logger())
+ 
+-		dist, err := fs.Sub(distFS, "frontend/dist")
++	// CORS middleware for dev server compatibility
++	r.Use(func(c *gin.Context) {
++		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
++		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
++		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
++		if c.Request.Method == "OPTIONS" {
++			c.AbortWithStatus(204)
++			return
++		}
++		c.Next()
++	})
++
++	// Initialize session manager and register API routes
++	sessionMgr := session.NewManager(".")
++	canvas.RegisterAPIRoutes(r, sessionMgr)
++
++	// WebSocket endpoint
++	r.GET("/ws", func(c *gin.Context) {
++		conn, err := websocketUpgrader.Upgrade(c.Writer, c.Request, nil)
+ 		if err != nil {
+-			panic(err)
++			return
++		}
++		defer conn.Close()
++		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
++		conn.SetPongHandler(func(string) error {
++			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
++			return nil
++		})
++		for {
++			_, _, err := conn.ReadMessage()
++			if err != nil {
++				break
++			}
++		}
++	})
++
++	// Health check endpoint
++	r.GET("/healthz", func(c *gin.Context) {
++		c.JSON(200, gin.H{
++			"status":    "ok",
++			"timestamp": time.Now().UTC().Format(time.RFC3339),
++			"version":   version,
++		})
++	})
++
++	// Readiness check (Subtask 4.3)
++	r.GET("/readyz", func(c *gin.Context) {
++		status := "ready"
++		httpStatus := 200
++		checks := gin.H{}
++		// Check if Gin server is up (always true if we're handling the request)
++		checks["gin_server"] = "up"
++		// Check if frontend is embedded and accessible
++		if frontendFS != nil {
++			checks["frontend_embedded"] = "ok"
++		} else {
++			checks["frontend_embedded"] = "missing"
++			status = "not ready"
++			httpStatus = 503
+ 		}
+-		r.StaticFS("/assets", http.FS(dist))
++		c.JSON(httpStatus, gin.H{
++			"status": status,
++			"checks": checks,
++		})
++	})
+ 
++	// Liveness check (Subtask 4.3)
++	r.GET("/livez", func(c *gin.Context) {
++		c.JSON(200, gin.H{
++			"status":    "alive",
++			"uptime":    time.Since(startTime).String(),
++			"timestamp": time.Now().UTC().Format(time.RFC3339),
++		})
++	})
++
++	// Metrics endpoint (Prometheus placeholder)
++	r.GET("/metrics", func(c *gin.Context) {
++		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\n")
++	})
++
++	// Serve embedded frontend (Task 3)
++	if frontendFS != nil {
++		// Serve static assets and files from embedded dist
+ 		r.NoRoute(func(c *gin.Context) {
+-			data, err := distFS.ReadFile("frontend/dist/index.html")
+-			if err != nil {
+-				c.AbortWithStatus(404)
++			// Skip API and WS routes
++			path := c.Request.URL.Path
++			if path == "/ws" || (len(path) >= 7 && path[:7] == "/api/v1") {
++				c.Next()
++				return
++			}
++
++			// Sanitize path: reject any path with ".." to prevent traversal
++			filename := strings.TrimPrefix(path, "/")
++			if strings.Contains(filename, "..") {
++				c.String(400, "Bad request")
+ 				return
+ 			}
+-			c.Data(200, "text/html; charset=utf-8", data)
++
++			// Try to open requested file from embedded FS
++			if filename == "" {
++				filename = "index.html"
++			}
++			f, err := frontendFS.Open(filename)
++			if err == nil {
++				defer f.Close()
++				// Check if it's a directory
++				info, err := f.Stat()
++				if err != nil {
++					c.String(500, "Internal server error")
++					return
++				}
++				if info.IsDir() {
++					f.Close()
++					// Fall through to index.html fallback
++				} else {
++					// Read file contents and write to response
++					data, err := io.ReadAll(f)
++					if err != nil {
++						c.String(500, "Internal server error")
++						return
++					}
++					// Set content type based on file extension
++					contentType := "application/octet-stream"
++					switch {
++					case strings.HasSuffix(filename, ".html"):
++						contentType = "text/html"
++					case strings.HasSuffix(filename, ".css"):
++						contentType = "text/css"
++					case strings.HasSuffix(filename, ".js"):
++						contentType = "application/javascript"
++					case strings.HasSuffix(filename, ".ico"):
++						contentType = "image/x-icon"
++					case strings.HasSuffix(filename, ".png"):
++						contentType = "image/png"
++					case strings.HasSuffix(filename, ".jpg"), strings.HasSuffix(filename, ".jpeg"):
++						contentType = "image/jpeg"
++					case strings.HasSuffix(filename, ".svg"):
++						contentType = "image/svg+xml"
++					case strings.HasSuffix(filename, ".json"):
++						contentType = "application/json"
++					case strings.HasSuffix(filename, ".woff"):
++						contentType = "font/woff"
++					case strings.HasSuffix(filename, ".woff2"):
++						contentType = "font/woff2"
++					case strings.HasSuffix(filename, ".ttf"):
++						contentType = "font/ttf"
++					}
++					c.Data(200, contentType, data)
++					return
++				}
++			}
++
++			// Fallback to index.html for SPA routing
++			indexFile, err := frontendFS.Open("index.html")
++			if err == nil {
++				defer indexFile.Close()
++				data, err := io.ReadAll(indexFile)
++				if err != nil {
++					c.String(500, "Internal server error")
++					return
++				}
++				c.Header("Content-Type", "text/html")
++				c.Data(200, "text/html", data)
++				return
++			}
++
++			c.String(404, "Frontend not found. Build the frontend first with npm run build.")
++		})
++	} else {
++		// No embedded FS, serve placeholder
++		r.NoRoute(func(c *gin.Context) {
++			c.String(503, "Frontend not built. Run 'npm run build' in the frontend directory.")
+ 		})
++	}
+ 
+-		r.Run(":8080")
+-	},
+-}
++	// Start server
++	srv := &http.Server{
++		Addr:    ":" + servePort,
++		Handler: r,
++	}
+ 
+-func init() {
+-	serveCmd.Flags().IntP("port", "p", 8080, "Port to listen on")
+-	rootCmd.AddCommand(serveCmd)
++	// Graceful shutdown
++	quit := make(chan os.Signal, 1)
++	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
++
++	errCh := make(chan error, 1)
++	go func() {
++		fmt.Printf("Starting server on :%s\n", servePort)
++		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++			errCh <- err
++			return
++		}
++	}()
++
++	select {
++	case <-quit:
++		fmt.Println("Shutting down server...")
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		if err := srv.Shutdown(ctx); err != nil {
++			return fmt.Errorf("server forced to shutdown: %w", err)
++		}
++		fmt.Println("Server exited")
++		return nil
++	case err := <-errCh:
++		return fmt.Errorf("server failed to start: %w", err)
++	}
+ }
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 9e3ef6a..3581fdc 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -14,6 +14,21 @@ import '@xyflow/react/dist/style.css';
+ 
+ import { initialNodes, nodeTypes } from './nodes';
+ import { initialEdges, edgeTypes } from './edges';
++import { SessionExplorer } from './components/panels/SessionExplorer';
++import { ChatPanel } from './components/panels/ChatPanel';
++
++async function createProject(projectName: string) {
++  const response = await fetch('/api/v1/sessions', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ projectName, workspaceDir: '.' }),
++  });
++  if (!response.ok) {
++    const error = await response.json();
++    throw new Error(error.error || 'Failed to create project');
++  }
++  return response.json();
++}
+ 
+ export default function App() {
+   const [nodes, , onNodesChange] = useNodesState(initialNodes);
+@@ -23,20 +38,39 @@ export default function App() {
+     [setEdges]
+   );
+ 
++  const handleCreateProject = async (projectName: string) => {
++    try {
++      const result = await createProject(projectName);
++      console.log('Project created:', result);
++      alert(`Project "${projectName}" created successfully! Session ID: ${result.sessionId}`);
++    } catch (err) {
++      console.error('Failed to create project:', err);
++      alert(`Failed to create project: ${err instanceof Error ? err.message : String(err)}`);
++    }
++  };
++
+   return (
+-    <ReactFlow
+-      nodes={nodes}
+-      nodeTypes={nodeTypes}
+-      onNodesChange={onNodesChange}
+-      edges={edges}
+-      edgeTypes={edgeTypes}
+-      onEdgesChange={onEdgesChange}
+-      onConnect={onConnect}
+-      fitView
+-    >
+-      <Background />
+-      <MiniMap />
+-      <Controls />
+-    </ReactFlow>
++    <div className="app-container">
++      <div className="sidebar">
++        <SessionExplorer onCreateProject={handleCreateProject} />
++      </div>
++      <div className="main-content">
++        <ChatPanel onCreateProject={handleCreateProject} />
++        <ReactFlow
++          nodes={nodes}
++          nodeTypes={nodeTypes}
++          onNodesChange={onNodesChange}
++          edges={edges}
++          edgeTypes={edgeTypes}
++          onEdgesChange={onEdgesChange}
++          onConnect={onConnect}
++          fitView
++        >
++          <Background />
++          <MiniMap />
++          <Controls />
++        </ReactFlow>
++      </div>
++    </div>
+   );
+ }
+warning: in the working copy of 'cmd/nforge/new.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/cmd/nforge/new.go b/cmd/nforge/new.go
+new file mode 100644
+index 0000000..f1bdad5
+--- /dev/null
++++ b/cmd/nforge/new.go
+@@ -0,0 +1,45 @@
++package nforge
++
++import (
++	"context"
++	"fmt"
++
++	"github.com/nnlgsakib/nodeforge/internal/session"
++	"github.com/spf13/cobra"
++)
++
++var (
++	newWorkspaceDir string
++	newTemplate    string
++)
++
++var newCmd = &cobra.Command{
++	Use:   "new <project-name>",
++	Short: "Create a new NodeForge project",
++	Long:  "Creates a new project workspace with the specified name, initializing the .nforge/ directory structure",
++	Args:  cobra.ExactArgs(1),
++	RunE: func(cmd *cobra.Command, args []string) error {
++		projectName := args[0]
++		return runNewProject(projectName, newWorkspaceDir, newTemplate)
++	},
++}
++
++func init() {
++	newCmd.Flags().StringVar(&newWorkspaceDir, "workspace-dir", ".", "Parent directory to create the project in (default: current directory)")
++	newCmd.Flags().StringVar(&newTemplate, "template", "default", "Project template to use (default: default)")
++	rootCmd.AddCommand(newCmd)
++}
++
++func runNewProject(projectName, workspaceDir, template string) error {
++	fmt.Printf("Creating project %q in %s (template: %s)\n", projectName, workspaceDir, template)
++
++	mgr := session.NewManager(workspaceDir)
++	ctx := context.Background()
++	sess, err := mgr.CreateSessionWithName(ctx, projectName)
++	if err != nil {
++		return fmt.Errorf("failed to create project: %w", err)
++	}
++
++	fmt.Printf("Project created successfully! Session ID: %s\n", sess.ID)
++	return nil
++}
+warning: in the working copy of 'cmd/nforge/new_test.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/cmd/nforge/new_test.go b/cmd/nforge/new_test.go
+new file mode 100644
+index 0000000..d1a8919
+--- /dev/null
++++ b/cmd/nforge/new_test.go
+@@ -0,0 +1,49 @@
++package nforge
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++func TestRunNewProject(t *testing.T) {
++	tmpDir := t.TempDir()
++	projectName := "test-project"
++	workspaceDir := tmpDir
++	template := "default"
++
++	err := runNewProject(projectName, workspaceDir, template)
++	if err != nil {
++		t.Fatalf("runNewProject failed: %v", err)
++	}
++
++	// Check that project directory was created
++	projectDir := filepath.Join(workspaceDir, projectName)
++	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
++		t.Fatalf("project directory not created at %s", projectDir)
++	}
++
++	// Check that .nforge directory was created
++	nforgeDir := filepath.Join(projectDir, ".nforge")
++	if _, err := os.Stat(nforgeDir); os.IsNotExist(err) {
++		t.Fatalf(".nforge directory not created at %s", nforgeDir)
++	}
++
++	// Check for config.yaml
++	configFile := filepath.Join(nforgeDir, "config.yaml")
++	if _, err := os.Stat(configFile); os.IsNotExist(err) {
++		t.Fatalf("config.yaml not created at %s", configFile)
++	}
++
++	// Check for README.md
++	readmeFile := filepath.Join(nforgeDir, "README.md")
++	if _, err := os.Stat(readmeFile); os.IsNotExist(err) {
++		t.Fatalf("README.md not created at %s", readmeFile)
++	}
++
++	// Check for .gitignore
++	gitignoreFile := filepath.Join(nforgeDir, ".gitignore")
++	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {
++		t.Fatalf(".gitignore not created at %s", gitignoreFile)
++	}
++}
+warning: in the working copy of 'internal/session/manager.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/internal/session/manager.go b/internal/session/manager.go
+new file mode 100644
+index 0000000..423f145
+--- /dev/null
++++ b/internal/session/manager.go
+@@ -0,0 +1,50 @@
++package session
++
++import (
++	"context"
++	"fmt"
++	"os"
++	"path/filepath"
++)
++
++// Session represents a project workspace session
++type Session struct {
++	ID        string
++	Name      string
++	Workspace string
++}
++
++// Manager handles session creation and management
++type Manager struct {
++	workspaceRoot string
++}
++
++// NewManager creates a new session manager
++func NewManager(workspaceRoot string) *Manager {
++	return &Manager{workspaceRoot: workspaceRoot}
++}
++
++// CreateSessionWithName creates a new session with the specified name
++func (m *Manager) CreateSessionWithName(ctx context.Context, name string) (*Session, error) {
++	// Create project directory
++	projectDir := filepath.Join(m.workspaceRoot, name)
++	if err := os.MkdirAll(projectDir, 0755); err != nil {
++		return nil, fmt.Errorf("failed to create project directory: %w", err)
++	}
++
++	// Initialize .nforge workspace
++	if err := InitProjectWorkspace(projectDir, name); err != nil {
++		return nil, fmt.Errorf("failed to initialize workspace: %w", err)
++	}
++
++	return &Session{
++		ID:        generateSessionID(),
++		Name:      name,
++		Workspace: projectDir,
++	}, nil
++}
++
++// generateSessionID generates a simple session ID (to be enhanced later)
++func generateSessionID() string {
++	return fmt.Sprintf("sess-%d", os.Getpid())
++}
+warning: in the working copy of 'internal/session/manager_test.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/internal/session/manager_test.go b/internal/session/manager_test.go
+new file mode 100644
+index 0000000..b69e46c
+--- /dev/null
++++ b/internal/session/manager_test.go
+@@ -0,0 +1,36 @@
++package session
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++func TestCreateSessionWithName(t *testing.T) {
++	mgr := NewManager(os.TempDir())
++	ctx := context.Background()
++
++	sess, err := mgr.CreateSessionWithName(ctx, "test-session")
++	if err != nil {
++		t.Fatalf("CreateSessionWithName failed: %v", err)
++	}
++	if sess == nil {
++		t.Fatal("session is nil")
++	}
++	if sess.Name != "test-session" {
++		t.Errorf("expected session name 'test-session', got %q", sess.Name)
++	}
++	if sess.ID == "" {
++		t.Error("session ID is empty")
++	}
++	if sess.Workspace == "" {
++		t.Error("session workspace is empty")
++	}
++
++	// Check that .nforge directory was created
++	nforgeDir := filepath.Join(sess.Workspace, ".nforge")
++	if _, err := os.Stat(nforgeDir); os.IsNotExist(err) {
++		t.Fatalf(".nforge directory not created at %s", nforgeDir)
++	}
++}
+warning: in the working copy of 'internal/session/workspace.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/internal/session/workspace.go b/internal/session/workspace.go
+new file mode 100644
+index 0000000..7f72155
+--- /dev/null
++++ b/internal/session/workspace.go
+@@ -0,0 +1,38 @@
++package session
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++)
++
++// InitProjectWorkspace initializes the .nforge/ directory structure for a project
++func InitProjectWorkspace(projectDir, projectName string) error {
++	nforgeDir := filepath.Join(projectDir, ".nforge")
++	if err := os.MkdirAll(nforgeDir, 0755); err != nil {
++		return fmt.Errorf("failed to create .nforge directory: %w", err)
++	}
++
++	// Create config.yaml
++	config := fmt.Sprintf("project_name: %s\ncreated_at: \"\"\nversion: 0.1.0\n", projectName)
++	configPath := filepath.Join(nforgeDir, "config.yaml")
++	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
++		return fmt.Errorf("failed to write config.yaml: %w", err)
++	}
++
++	// Create README.md
++	readme := fmt.Sprintf("# %s\n\nNodeForge project workspace\n", projectName)
++	readmePath := filepath.Join(nforgeDir, "README.md")
++	if err := os.WriteFile(readmePath, []byte(readme), 0644); err != nil {
++		return fmt.Errorf("failed to write README.md: %w", err)
++	}
++
++	// Create .gitignore
++	gitignore := ".nforge/workspace/data/\n.nforge/workspace/tmp/\n"
++	gitignorePath := filepath.Join(nforgeDir, ".gitignore")
++	if err := os.WriteFile(gitignorePath, []byte(gitignore), 0644); err != nil {
++		return fmt.Errorf("failed to write .gitignore: %w", err)
++	}
++
++	return nil
++}
+warning: in the working copy of 'internal/session/workspace_test.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/internal/session/workspace_test.go b/internal/session/workspace_test.go
+new file mode 100644
+index 0000000..44fe2bd
+--- /dev/null
++++ b/internal/session/workspace_test.go
+@@ -0,0 +1,41 @@
++package session
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++func TestInitProjectWorkspace(t *testing.T) {
++	tmpDir := t.TempDir()
++	projectName := "test-workspace"
++
++	err := InitProjectWorkspace(tmpDir, projectName)
++	if err != nil {
++		t.Fatalf("InitProjectWorkspace failed: %v", err)
++	}
++
++	// Check .nforge directory exists
++	nforgeDir := filepath.Join(tmpDir, ".nforge")
++	if _, err := os.Stat(nforgeDir); os.IsNotExist(err) {
++		t.Fatalf(".nforge directory not created at %s", nforgeDir)
++	}
++
++	// Check config.yaml
++	configPath := filepath.Join(nforgeDir, "config.yaml")
++	if _, err := os.Stat(configPath); os.IsNotExist(err) {
++		t.Fatalf("config.yaml not created at %s", configPath)
++	}
++
++	// Check README.md
++	readmePath := filepath.Join(nforgeDir, "README.md")
++	if _, err := os.Stat(readmePath); os.IsNotExist(err) {
++		t.Fatalf("README.md not created at %s", readmePath)
++	}
++
++	// Check .gitignore
++	gitignorePath := filepath.Join(nforgeDir, ".gitignore")
++	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
++		t.Fatalf(".gitignore not created at %s", gitignorePath)
++	}
++}
+warning: in the working copy of 'internal/canvas/api.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/internal/canvas/api.go b/internal/canvas/api.go
+new file mode 100644
+index 0000000..09d838e
+--- /dev/null
++++ b/internal/canvas/api.go
+@@ -0,0 +1,53 @@
++package canvas
++
++import (
++	"context"
++	"net/http"
++
++	"github.com/gin-gonic/gin"
++	"github.com/nnlgsakib/nodeforge/internal/session"
++)
++
++// SessionRequest represents the request body for creating a session
++type SessionRequest struct {
++	ProjectName string `json:"projectName" binding:"required"`
++	WorkspaceDir string `json:"workspaceDir" binding:"required"`
++}
++
++// SessionResponse represents the response for a created session
++type SessionResponse struct {
++	SessionID   string `json:"sessionId"`
++	ProjectName string `json:"projectName"`
++	Workspace   string `json:"workspace"`
++}
++
++// RegisterAPIRoutes registers all API routes for the canvas
++func RegisterAPIRoutes(r *gin.Engine, sessionMgr *session.Manager) {
++	api := r.Group("/api/v1")
++	{
++		api.POST("/sessions", createSession(sessionMgr))
++	}
++}
++
++func createSession(mgr *session.Manager) gin.HandlerFunc {
++	return func(c *gin.Context) {
++		var req SessionRequest
++		if err := c.ShouldBindJSON(&req); err != nil {
++			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
++			return
++		}
++
++		ctx := context.Background()
++		sess, err := mgr.CreateSessionWithName(ctx, req.ProjectName)
++		if err != nil {
++			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session: " + err.Error()})
++			return
++		}
++
++		c.JSON(http.StatusCreated, SessionResponse{
++			SessionID:   sess.ID,
++			ProjectName: sess.Name,
++			Workspace:   sess.Workspace,
++		})
++	}
++}
+warning: in the working copy of 'frontend/src/components/panels/SessionExplorer.tsx', LF will be replaced by CRLF the next time Git touches it
+diff --git a/frontend/src/components/panels/SessionExplorer.tsx b/frontend/src/components/panels/SessionExplorer.tsx
+new file mode 100644
+index 0000000..1e76967
+--- /dev/null
++++ b/frontend/src/components/panels/SessionExplorer.tsx
+@@ -0,0 +1,32 @@
++import React, { useState } from 'react';
++
++interface SessionExplorerProps {
++  onCreateProject: (projectName: string) => void;
++}
++
++export const SessionExplorer: React.FC<SessionExplorerProps> = ({ onCreateProject }) => {
++  const [projectName, setProjectName] = useState('');
++
++  const handleCreate = () => {
++    if (projectName.trim()) {
++      onCreateProject(projectName.trim());
++      setProjectName('');
++    }
++  };
++
++  return (
++    <div className="session-explorer">
++      <h3>Workspace</h3>
++      <div className="new-project-form">
++        <input
++          type="text"
++          placeholder="Project name"
++          value={projectName}
++          onChange={(e) => setProjectName(e.target.value)}
++          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
++        />
++        <button onClick={handleCreate}>New Project</button>
++      </div>
++    </div>
++  );
++};
+warning: in the working copy of 'frontend/src/components/panels/ChatPanel.tsx', LF will be replaced by CRLF the next time Git touches it
+diff --git a/frontend/src/components/panels/ChatPanel.tsx b/frontend/src/components/panels/ChatPanel.tsx
+new file mode 100644
+index 0000000..13b8b0b
+--- /dev/null
++++ b/frontend/src/components/panels/ChatPanel.tsx
+@@ -0,0 +1,40 @@
++import React, { useState } from 'react';
++
++interface ChatPanelProps {
++  onCreateProject: (projectName: string) => void;
++}
++
++export const ChatPanel: React.FC<ChatPanelProps> = ({ onCreateProject }) => {
++  const [input, setInput] = useState('');
++
++  const handleSubmit = () => {
++    const trimmed = input.trim();
++    // Parse "new <project-name>" command
++    const newMatch = trimmed.match(/^new\s+(\S+)$/i);
++    if (newMatch) {
++      onCreateProject(newMatch[1]);
++      setInput('');
++      return;
++    }
++    // Handle other chat input (not implemented yet)
++    setInput('');
++  };
++
++  return (
++    <div className="chat-panel">
++      <div className="chat-messages">
++        {/* Chat messages will render here */}
++      </div>
++      <div className="chat-input">
++        <input
++          type="text"
++          placeholder="Type a message or 'new <project-name>'..."
++          value={input}
++          onChange={(e) => setInput(e.target.value)}
++          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
++        />
++        <button onClick={handleSubmit}>Send</button>
++      </div>
++    </div>
++  );
++};

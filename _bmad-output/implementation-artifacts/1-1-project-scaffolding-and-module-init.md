@@ -1,6 +1,6 @@
 # Story 1.1: Project Scaffolding & Module Init
 
-Status: review
+Status: done
 
 <!-- Validation: Run validate-create-story for quality check before dev-story. -->
 
@@ -203,6 +203,57 @@ tencent/hy3-preview:free
 - `docker-compose.yml` (created - nforge + ollama)
 - `frontend/src/nodes/types.ts` (modified - fixed AppNode type)
 
+## Review Findings
+
+### Decision Needed (Resolved)
+- [x] [Review][Decision] Go 1.26.2 / golang:1.26 version — User confirmed valid for 2026-04-30. [go.mod:3, Dockerfile:1]
+- [x] [Review][Decision] Missing required internal/ subdirectories — False positive; directories verified on disk. [AC2]
+- [x] [Review][Decision] Missing frontend/ directory — False positive; directory verified on disk. [AC2]
+- [x] [Review][Decision] API endpoint /health is singular — User chose to keep /health (conventional for health endpoints). [root.go:21]
+
+### Patches Applied
+- [x] [Review][Patch] --port flag now used in serve command [serve.go]
+- [x] [Review][Patch] make dev now runs npm run dev [Makefile]
+- [x] [Review][Patch] build target depends on frontend-build [Makefile]
+- [x] [Review][Patch] Added healthcheck/restart policy for ollama [docker-compose.yml]
+- [x] [Review][Patch] Replaced panic with graceful error handling [serve.go]
+- [x] [Review][Patch] NoRoute now returns 404 for /api paths [serve.go]
+- [x] [Review][Patch] main.go now handles nforge.Execute() error [main.go]
+- [x] [Review][Patch] Gin now runs in release mode [serve.go]
+- [x] [Review][Patch] Port errors now reported to stderr [serve.go]
+- [x] [Review][Patch] protobuf moved to direct dependency [go.mod]
+- [x] [Review][Patch] make clean no longer removes frontend/dist [Makefile]
+- [x] [Review][Patch] Removed redundant frontend/dist copy from Dockerfile [Dockerfile]
+- [x] [Review][Patch] distFS initialization (false positive - dismissed) [serve.go]
+
+### Deferred
+- [x] [Review][Defer] Unused --config flag [root.go:15] — deferred, pre-existing
+- [x] [Review][Defer] Unused PORT env var in docker-compose [docker-compose.yml:8-9] — deferred, pre-existing
+- [x] [Review][Defer] Function naming PascalCase vs camelCase (Go convention override) [root.go, serve.go] — deferred, Go idiomatic style requires PascalCase for exports
+- [x] [Review][Defer] Empty HealthRequest proto message [plugin.proto:25-26] — deferred, valid proto3 pattern
+- [x] [Review][Defer] Unnecessary QUIC indirect dependency [go.mod:29-30] — deferred, transitive dep not actionable
+
 ## Change Log
 
 - 2026-04-30: Initial implementation - project scaffolding complete (Go module, Gin, Cobra, React scaffold, build artifacts)
+- 2026-04-30: Code review - applied 12 patches (port flag, make dev, frontend dist, ollama healthcheck, error handling, gin release mode, protobuf dep, dockerfile cleanup)
+- 2026-04-30: Follow-up review - 5 additional patches identified
+- 2026-04-30: Follow-up review patches applied (port validation, Makefile cleanup, FS check, .dockerignore)
+
+## Review Findings (Follow-up 2026-04-30)
+
+### Patches Applied (Follow-up 2026-04-30)
+- [x] [Review][Patch] Now reads port flag as string and validates with strconv.Atoi + range check [serve.go]
+- [x] [Review][Patch] Removed duplicate frontend-dev target, dev now only target [Makefile]
+- [x] [Review][Patch] Port validation: must be integer between 1 and 65535 [serve.go]
+- [x] [Review][Patch] Added startup check for index.html in embedded FS [serve.go]
+- [x] [Review][Patch] Created .dockerignore to exclude node_modules, .git, etc. [.dockerignore]
+
+### Dismissed (False positives / cosmetic / theoretical)
+- [x] [Review][Dismiss] Embed directive non-recursive glob — Go embed recursively includes matched directories, not a bug
+- [x] [Review][Dismiss] API path prefix check — code already has len >= 4 guard, works correctly
+- [x] [Review][Dismiss] Duplicate distFS variables — main.go and serve.go use separate vars correctly
+- [x] [Review][Dismiss] os.Exit bypasses deferred — appropriate for fatal startup errors
+- [x] [Review][Dismiss] Unused PORT env var in docker-compose — cosmetic, not a code bug
+- [x] [Review][Dismiss] Unused protobuf dependency — proto/plugin.proto uses it
+- [x] [Review][Dismiss] proto/ directory — verified exists on disk

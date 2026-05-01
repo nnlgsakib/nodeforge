@@ -1,0 +1,364 @@
+diff --git a/cmd/nforge/config.go b/cmd/nforge/config.go
+new file mode 100644
+index 0000000..147d633
+--- /dev/null
++++ b/cmd/nforge/config.go
+@@ -0,0 +1,130 @@
++package nforge
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"strconv"
++
++	"github.com/spf13/cobra"
++	"github.com/spf13/viper"
++)
++
++var supportedKeys = map[string]bool{
++	"llm.openai-key":    true,
++	"llm.anthropic-key": true,
++	"llm.ollama-url":    true,
++	"server.port":        true,
++	"llm.default-model": true,
++}
++
++var configCmd = &cobra.Command{
++	Use:   "config",
++	Short: "Manage configuration (set/get values)",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		return cmd.Help()
++	},
++}
++
++var setCmd = &cobra.Command{
++	Use:   "set <key> <value>",
++	Short: "Set a configuration key to a value",
++	Args:  cobra.ExactArgs(2),
++	RunE: func(cmd *cobra.Command, args []string) error {
++		key := args[0]
++		value := args[1]
++
++		if !isSupportedKey(key) {
++			return fmt.Errorf("unsupported config key: %s. Supported keys: %v", key, getSupportedKeys())
++		}
++
++		// Initialize Viper
++		viper.Reset()
++		viper.SetConfigFile(configPath)
++		viper.SetConfigType("yaml")
++
++		// Create config directory if needed
++		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
++			return fmt.Errorf("failed to create config directory: %w", err)
++		}
++
++		// Read existing config if it exists
++		if _, err := os.Stat(configPath); err == nil {
++			if err := viper.ReadInConfig(); err != nil {
++				return fmt.Errorf("failed to read config: %w", err)
++			}
++		}
++
++		// Convert value to appropriate type
++		var val interface{}
++		switch key {
++		case "server.port":
++			i, err := strconv.Atoi(value)
++			if err != nil {
++				return fmt.Errorf("server.port must be an integer: %w", err)
++			}
++			val = i
++		default:
++			val = value
++		}
++
++		viper.Set(key, val)
++
++		// Write config (creates file if it doesn't exist)
++		if err := viper.WriteConfig(); err != nil {
++			return fmt.Errorf("failed to write config: %w", err)
++		}
++
++		fmt.Printf("Set %s = %v\n", key, val)
++		return nil
++	},
++}
++
++var getCmd = &cobra.Command{
++	Use:   "get <key>",
++	Short: "Get a configuration value",
++	Args:  cobra.ExactArgs(1),
++	RunE: func(cmd *cobra.Command, args []string) error {
++		key := args[0]
++
++		if !isSupportedKey(key) {
++			return fmt.Errorf("unsupported config key: %s. Supported keys: %v", key, getSupportedKeys())
++		}
++
++		// Initialize Viper
++		viper.Reset()
++		viper.SetConfigFile(configPath)
++		viper.SetConfigType("yaml")
++
++		if err := viper.ReadInConfig(); err != nil {
++			return fmt.Errorf("failed to read config: %w", err)
++		}
++
++		val := viper.Get(key)
++		if val == nil {
++			return fmt.Errorf("key %s not found in config", key)
++		}
++
++		fmt.Println(val)
++		return nil
++	},
++}
++
++func init() {
++	configCmd.AddCommand(setCmd)
++	configCmd.AddCommand(getCmd)
++	rootCmd.AddCommand(configCmd)
++}
++
++func isSupportedKey(key string) bool {
++	_, ok := supportedKeys[key]
++	return ok
++}
++
++func getSupportedKeys() []string {
++	keys := make([]string, 0, len(supportedKeys))
++	for k := range supportedKeys {
++		keys = append(keys, k)
++	}
++	return keys
++}
+diff --git a/cmd/nforge/config_test.go b/cmd/nforge/config_test.go
+new file mode 100644
+index 0000000..45680d0
+--- /dev/null
++++ b/cmd/nforge/config_test.go
+@@ -0,0 +1,92 @@
++package nforge
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/spf13/viper"
++	"github.com/stretchr/testify/assert"
++)
++
++func TestIsSupportedKey(t *testing.T) {
++	assert.True(t, isSupportedKey("llm.openai-key"))
++	assert.True(t, isSupportedKey("llm.anthropic-key"))
++	assert.True(t, isSupportedKey("llm.ollama-url"))
++	assert.True(t, isSupportedKey("server.port"))
++	assert.True(t, isSupportedKey("llm.default-model"))
++	assert.False(t, isSupportedKey("invalid-key"))
++	assert.False(t, isSupportedKey("llm.openai-key.bad"))
++}
++
++func TestConfigSetAndGet(t *testing.T) {
++	// Create temp config file
++	tmpDir := t.TempDir()
++	tmpConfig := filepath.Join(tmpDir, "config.yaml")
++	configPath = tmpConfig
++	defer func() { configPath = getDefaultConfigPath() }()
++
++	// Test set valid key
++	err := setCmd.RunE(setCmd, []string{"llm.openai-key", "sk-test123"})
++	assert.NoError(t, err)
++
++	// Verify file exists
++	_, err = os.Stat(tmpConfig)
++	assert.NoError(t, err)
++
++	// Verify value via Viper
++	viper.Reset()
++	viper.SetConfigFile(configPath)
++	viper.SetConfigType("yaml")
++	err = viper.ReadInConfig()
++	assert.NoError(t, err)
++	assert.Equal(t, "sk-test123", viper.GetString("llm.openai-key"))
++
++	// Test get valid key
++	// Capture output? Since getCmd prints to stdout, we can test via Viper
++	val := viper.Get("llm.openai-key")
++	assert.Equal(t, "sk-test123", val)
++
++	// Test set server.port as integer
++	err = setCmd.RunE(setCmd, []string{"server.port", "8080"})
++	assert.NoError(t, err)
++
++	viper.Reset()
++	viper.SetConfigFile(configPath)
++	viper.ReadInConfig()
++	assert.Equal(t, 8080, viper.GetInt("server.port"))
++}
++
++func TestConfigSetInvalidKey(t *testing.T) {
++	tmpDir := t.TempDir()
++	configPath = filepath.Join(tmpDir, "config.yaml")
++	defer func() { configPath = getDefaultConfigPath() }()
++
++	err := setCmd.RunE(setCmd, []string{"invalid-key", "value"})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "unsupported config key")
++}
++
++func TestConfigGetNonExistentKey(t *testing.T) {
++	tmpDir := t.TempDir()
++	configPath = filepath.Join(tmpDir, "config.yaml")
++	defer func() { configPath = getDefaultConfigPath() }()
++
++	// Create empty config
++	f, _ := os.Create(configPath)
++	f.Close()
++
++	err := getCmd.RunE(getCmd, []string{"llm.openai-key"})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "not found in config")
++}
++
++func TestConfigSetServerPortInvalid(t *testing.T) {
++	tmpDir := t.TempDir()
++	configPath = filepath.Join(tmpDir, "config.yaml")
++	defer func() { configPath = getDefaultConfigPath() }()
++
++	err := setCmd.RunE(setCmd, []string{"server.port", "not-a-number"})
++	assert.Error(t, err)
++	assert.Contains(t, err.Error(), "must be an integer")
++}
+diff --git a/cmd/nforge/root.go b/cmd/nforge/root.go
+index 4128812..9752e1b 100644
+--- a/cmd/nforge/root.go
++++ b/cmd/nforge/root.go
+@@ -1,27 +1,47 @@
+ package nforge
+ 
+ import (
+-	"github.com/gin-gonic/gin"
++	"os"
++
+ 	"github.com/spf13/cobra"
+ )
+ 
++var version = "dev" // Set via ldflags at build time
++var verboseMode bool
++var configPath string
++
+ var rootCmd = &cobra.Command{
+ 	Use:   "nforge",
+-	Short: "NodeForge - Visual AI Workflow Engine",
+-	Long:  `NodeForge (nfv2) is a visual AI workflow engine with n8n-style graphs, LLM integration, and a Go plugin system.`,
++	Short: "NodeForge OS - Spec-driven development workbench",
++	Version: version,
+ }
+ 
+ func init() {
+-	rootCmd.PersistentFlags().StringP("config", "c", "", "Config file path")
++	// Persistent flags
++	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", getEnvBool("NFORGE_VERBOSE", false), "Enable debug logging (env: NFORGE_VERBOSE)")
++	rootCmd.PersistentFlags().StringVar(&configPath, "config-path", getDefaultConfigPath(), "Config file path (env: NFORGE_CONFIG)")
++
++	// Register subcommands
++	rootCmd.AddCommand(serveCmd)
++}
++
++func getDefaultConfigPath() string {
++	if v := os.Getenv("NFORGE_CONFIG"); v != "" {
++		return v
++	}
++	home, err := os.UserHomeDir()
++	if err != nil {
++		return "~/.nforge/config.yaml"
++	}
++	return home + "/.nforge/config.yaml"
+ }
+ 
+-func RegisterRoutes(r *gin.Engine) {
+-	api := r.Group("/api/v1")
+-	{
+-		api.GET("/health", func(c *gin.Context) {
+-			c.JSON(200, gin.H{"status": "ok"})
+-		})
++func getEnvBool(key string, defaultVal bool) bool {
++	v := os.Getenv(key)
++	if v == "" {
++		return defaultVal
+ 	}
++	return v == "true" || v == "1" || v == "yes"
+ }
+ 
+ func Execute() error {
+diff --git a/go.mod b/go.mod
+index bfbea54..cd2cff8 100644
+--- a/go.mod
++++ b/go.mod
+@@ -4,6 +4,8 @@ go 1.26.2
+ 
+ require (
+ 	github.com/gin-gonic/gin v1.11.0
++	github.com/google/uuid v1.6.0
++	github.com/gorilla/websocket v1.5.3
+ 	github.com/spf13/cobra v1.10.2
+ )
+ 
+@@ -11,6 +13,8 @@ require (
+ 	github.com/bytedance/sonic v1.14.0 // indirect
+ 	github.com/bytedance/sonic/loader v0.3.0 // indirect
+ 	github.com/cloudwego/base64x v0.1.6 // indirect
++	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
++	github.com/fsnotify/fsnotify v1.7.0 // indirect
+ 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
+ 	github.com/gin-contrib/sse v1.1.0 // indirect
+ 	github.com/go-playground/locales v0.14.1 // indirect
+@@ -18,22 +22,37 @@ require (
+ 	github.com/go-playground/validator/v10 v10.27.0 // indirect
+ 	github.com/goccy/go-json v0.10.2 // indirect
+ 	github.com/goccy/go-yaml v1.18.0 // indirect
++	github.com/hashicorp/hcl v1.0.0 // indirect
+ 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+ 	github.com/json-iterator/go v1.1.12 // indirect
+ 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+ 	github.com/leodido/go-urn v1.4.0 // indirect
++	github.com/magiconair/properties v1.8.7 // indirect
+ 	github.com/mattn/go-isatty v0.0.20 // indirect
+-	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
++	github.com/mitchellh/mapstructure v1.5.0 // indirect
++	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+ 	github.com/modern-go/reflect2 v1.0.2 // indirect
+ 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
++	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+ 	github.com/quic-go/qpack v0.5.1 // indirect
+ 	github.com/quic-go/quic-go v0.54.0 // indirect
++	github.com/sagikazarmark/locafero v0.4.0 // indirect
++	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
++	github.com/sourcegraph/conc v0.3.0 // indirect
++	github.com/spf13/afero v1.11.0 // indirect
++	github.com/spf13/cast v1.6.0 // indirect
+ 	github.com/spf13/pflag v1.0.9 // indirect
++	github.com/spf13/viper v1.19.0 // indirect
++	github.com/stretchr/testify v1.11.1 // indirect
++	github.com/subosito/gotenv v1.6.0 // indirect
+ 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
+ 	github.com/ugorji/go/codec v1.3.0 // indirect
++	go.uber.org/atomic v1.9.0 // indirect
+ 	go.uber.org/mock v0.5.0 // indirect
++	go.uber.org/multierr v1.9.0 // indirect
+ 	golang.org/x/arch v0.20.0 // indirect
+ 	golang.org/x/crypto v0.40.0 // indirect
++	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
+ 	golang.org/x/mod v0.25.0 // indirect
+ 	golang.org/x/net v0.42.0 // indirect
+ 	golang.org/x/sync v0.16.0 // indirect
+@@ -41,4 +60,6 @@ require (
+ 	golang.org/x/text v0.27.0 // indirect
+ 	golang.org/x/tools v0.34.0 // indirect
+ 	google.golang.org/protobuf v1.36.11 // indirect
++	gopkg.in/ini.v1 v1.67.0 // indirect
++	gopkg.in/yaml.v3 v3.0.1 // indirect
+ )

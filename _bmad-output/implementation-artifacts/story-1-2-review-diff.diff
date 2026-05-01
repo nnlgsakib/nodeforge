@@ -1,0 +1,469 @@
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..e0f9c46
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,26 @@
++.PHONY: build dev docker test clean
++
++build:
++	go build -o nforge .
++
++dev:
++	gin --runtime gin
++
++docker:
++	docker build -t nfv2:latest .
++
++test:
++	go test ./...
++
++clean:
++	rm -f nforge
++	rm -rf frontend/dist
++
++frontend-install:
++	cd frontend && npm install
++
++frontend-dev:
++	cd frontend && npm run dev
++
++frontend-build:
++	cd frontend && npm run build
+diff --git a/cmd/nforge/root.go b/cmd/nforge/root.go
+new file mode 100644
+index 0000000..4128812
+--- /dev/null
++++ b/cmd/nforge/root.go
+@@ -0,0 +1,29 @@
++package nforge
++
++import (
++	"github.com/gin-gonic/gin"
++	"github.com/spf13/cobra"
++)
++
++var rootCmd = &cobra.Command{
++	Use:   "nforge",
++	Short: "NodeForge - Visual AI Workflow Engine",
++	Long:  `NodeForge (nfv2) is a visual AI workflow engine with n8n-style graphs, LLM integration, and a Go plugin system.`,
++}
++
++func init() {
++	rootCmd.PersistentFlags().StringP("config", "c", "", "Config file path")
++}
++
++func RegisterRoutes(r *gin.Engine) {
++	api := r.Group("/api/v1")
++	{
++		api.GET("/health", func(c *gin.Context) {
++			c.JSON(200, gin.H{"status": "ok"})
++		})
++	}
++}
++
++func Execute() error {
++	return rootCmd.Execute()
++}
+diff --git a/cmd/nforge/serve.go b/cmd/nforge/serve.go
+new file mode 100644
+index 0000000..3c50b61
+--- /dev/null
++++ b/cmd/nforge/serve.go
+@@ -0,0 +1,48 @@
++package nforge
++
++import (
++	"embed"
++	"io/fs"
++	"net/http"
++
++	"github.com/gin-gonic/gin"
++	"github.com/spf13/cobra"
++)
++
++var distFS embed.FS
++
++func SetDistFS(fs embed.FS) {
++	distFS = fs
++}
++
++var serveCmd = &cobra.Command{
++	Use:   "serve",
++	Short: "Start the NodeForge server",
++	Run: func(cmd *cobra.Command, args []string) {
++		r := gin.Default()
++
++		RegisterRoutes(r)
++
++		dist, err := fs.Sub(distFS, "frontend/dist")
++		if err != nil {
++			panic(err)
++		}
++		r.StaticFS("/assets", http.FS(dist))
++
++		r.NoRoute(func(c *gin.Context) {
++			data, err := distFS.ReadFile("frontend/dist/index.html")
++			if err != nil {
++				c.AbortWithStatus(404)
++				return
++			}
++			c.Data(200, "text/html; charset=utf-8", data)
++		})
++
++		r.Run(":8080")
++	},
++}
++
++func init() {
++	serveCmd.Flags().IntP("port", "p", 8080, "Port to listen on")
++	rootCmd.AddCommand(serveCmd)
++}
+diff --git a/main.go b/main.go
+new file mode 100644
+index 0000000..8eacc3f
+--- /dev/null
++++ b/main.go
+@@ -0,0 +1,14 @@
++package main
++
++import (
++	"embed"
++	"github.com/nnlgsakib/nodeforge/cmd/nforge"
++)
++
++//go:embed frontend/dist/*
++var distFS embed.FS
++
++func main() {
++	nforge.SetDistFS(distFS)
++	_ = nforge.Execute()
++}
+diff --git a/cmd/nforge/root.go b/cmd/nforge/root.go
+index 4128812..07fa897 100644
+--- a/cmd/nforge/root.go
++++ b/cmd/nforge/root.go
+@@ -1,18 +1,34 @@
+ package nforge
+
+ import (
++	"fmt"
++	"os"
++	"path/filepath"
++
+ 	"github.com/gin-gonic/gin"
+ 	"github.com/spf13/cobra"
+ )
+
++var version = "dev" // Set via ldflags at build time
++var verboseMode bool
++var configPath string
++
+ var rootCmd = &cobra.Command{
+-	Use:   "nforge",
+-	Short: "NodeForge - Visual AI Workflow Engine",
+-	Long:  `NodeForge (nfv2) is a visual AI workflow engine with n8n-style graphs, LLM integration, and a Go plugin system.`,
++	Use:     "nforge",
++	Short:   "NodeForge OS - Spec-driven development workbench",
++	Version: version,
++	PersistentPreRun: func(cmd *cobra.Command, args []string) {
++		if verboseMode {
++			fmt.Println("Debug logging enabled")
++		}
++		// Config path is accessed via flag lookup in commands that need it
++	},
+ }
+
+ func init() {
+-	rootCmd.PersistentFlags().StringP("config", "c", "", "Config file path")
++	// Persistent flags
++	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable debug logging (env: NFORGE_VERBOSE)")
++	rootCmd.PersistentFlags().StringVar(&configPath, "config-path", filepath.Join(os.Getenv("HOME"), ".nforge", "config.yaml"), "Config file path (env: NFORGE_CONFIG)")
+ }
+
+ func RegisterRoutes(r *gin.Engine) {
+diff --git a/cmd/nforge/serve.go b/cmd/nforge/serve.go
+index 3c50b61..02811fa 100644
+--- a/cmd/nforge/serve.go
++++ b/cmd/nforge/serve.go
+@@ -2,8 +2,11 @@
+ package nforge
+
+ import (
+ 	"embed"
++	"fmt"
+ 	"io/fs"
+ 	"net/http"
++	"os"
++	"strconv"
+
+ 	"github.com/gin-gonic/gin"
+ 	"github.com/spf13/cobra"
+@@ -19,17 +22,24 @@
+ 	Use:   "serve",
+ 	Short: "Start the NodeForge server",
+ 	Run: func(cmd *cobra.Command, args []string) {
+-		r := gin.Default()
++		gin.SetMode(gin.ReleaseMode)
++		r := gin.New()
++		r.Use(gin.Recovery())
++
+ 		RegisterRoutes(r)
+
+ 		dist, err := fs.Sub(distFS, "frontend/dist")
+ 		if err != nil {
+-			panic(err)
++			fmt.Fprintf(os.Stderr, "failed to load embedded frontend: %v\n", err)
++			os.Exit(1)
+ 		}
+ 		r.StaticFS("/assets", http.FS(dist))
+
+ 		r.NoRoute(func(c *gin.Context) {
++			if len(c.Request.URL.Path) >= 4 && c.Request.URL.Path[:4] == "/api" {
++				c.AbortWithStatus(404)
++				return
++			}
+ 			data, err := distFS.ReadFile("frontend/dist/index.html")
+ 			if err != nil {
+ 				c.AbortWithStatus(404)
+@@ -38,11 +48,29 @@
+ 			c.Data(200, "text/html; charset=utf-8", data)
+ 		})
+
++		if _, err := distFS.ReadFile("frontend/dist/index.html"); err != nil {
++			fmt.Fprintf(os.Stderr, "warning: frontend/dist/index.html not found in embedded FS\n")
++		}
++
++		portStr, err := cmd.Flags().GetString("port")
++		if err != nil {
++			fmt.Fprintf(os.Stderr, "failed to read port flag: %v\n", err)
++			os.Exit(1)
++		}
++		port, err := strconv.Atoi(portStr)
++		if err != nil || port < 1 || port > 65535 {
++			fmt.Fprintf(os.Stderr, "invalid port %q: must be an integer between 1 and 65535\n", portStr)
++			os.Exit(1)
++		}
++
++		if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
++			fmt.Fprintf(os.Stderr, "server failed to start on port %d: %v\n", port, err)
++			os.Exit(1)
++		}
+ 	},
+ }
+
+ func init() {
+-	serveCmd.Flags().IntP("port", "p", 8080, "Port to listen on")
++	serveCmd.Flags().StringP("port", "p", "8080", "Port to listen on")
+ 	rootCmd.AddCommand(serveCmd)
+ }
+diff --git a/cmd/nforge/run.go b/cmd/nforge/run.go
+new file mode 100644
+index 0000000..5fcd6d0
+--- /dev/null
++++ b/cmd/nforge/run.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var runCmd = &cobra.Command{
++	Use:   "run",
++	Short: "Run a spec file",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("run: not yet implemented (story 1.8)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(runCmd)
++}
+diff --git a/cmd/nforge/new.go b/cmd/nforge/new.go
+new file mode 100644
+index 0000000..63f9806
+--- /dev/null
++++ b/cmd/nforge/new.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var newCmd = &cobra.Command{
++	Use:   "new",
++	Short: "Create a new project",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("new: not yet implemented (story 1.4)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(newCmd)
++}
+diff --git a/cmd/nforge/config.go b/cmd/nforge/config.go
+new file mode 100644
+index 0000000..48a8a0f
+--- /dev/null
++++ b/cmd/nforge/config.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var configCmd = &cobra.Command{
++	Use:   "config",
++	Short: "Manage configuration",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("config: not yet implemented (story 1.5)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(configCmd)
++}
+diff --git a/cmd/nforge/skill.go b/cmd/nforge/skill.go
+new file mode 100644
+index 0000000..1eb448d
+--- /dev/null
++++ b/cmd/nforge/skill.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var skillCmd = &cobra.Command{
++	Use:   "skill",
++	Short: "Manage skills",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("skill: not yet implemented (story 1.5/skill system)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(skillCmd)
++}
+diff --git a/cmd/nforge/session.go b/cmd/nforge/session.go
+new file mode 100644
+index 0000000..db79230
+--- /dev/null
++++ b/cmd/nforge/session.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var sessionCmd = &cobra.Command{
++	Use:   "session",
++	Short: "Manage sessions",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("session: not yet implemented (story 4.5)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(sessionCmd)
++}
+diff --git a/cmd/nforge/doctor.go b/cmd/nforge/doctor.go
+new file mode 100644
+index 0000000..4505095
+--- /dev/null
++++ b/cmd/nforge/doctor.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra")
++
++var doctorCmd = &cobra.Command{
++	Use:   "doctor",
++	Short: "Run system health check",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("doctor: not yet implemented (story 1.6)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(doctorCmd)
++}
+diff --git a/cmd/nforge/graph.go b/cmd/nforge/graph.go
+new file mode 100644
+index 0000000..eef6e05
+--- /dev/null
++++ b/cmd/nforge/graph.go
+@@ -0,0 +1,20 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var graphCmd = &cobra.Command{
++	Use:   "graph",
++	Short: "Visualize node graph",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("graph: not yet implemented (story 1.7)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(graphCmd)
++}
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..e1e6dc7
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,23 @@
++# Built binary
++nforge
++
++# Go
++*.exe
++*.exe~
++*.dll
++*.so
++*.dylib
++*.test
++*.out
++
++# Frontend
++frontend/node_modules/
++frontend/dist/
++
++# IDE
++.vscode/
++.idea/
++
++# OS
++.DS_Store
++Thumbs.db

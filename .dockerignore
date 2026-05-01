@@ -1,0 +1,12 @@
+node_modules
+.git
+*.md
+.env
+.idea
+.vscode
+frontend/node_modules
+frontend/dist
+_claude
+_bmad-output
+**/__pycache__
+**/*.pyc
