@@ -7,6 +7,7 @@ import {
   useNodesState,
   useEdgesState,
   type OnConnect,
+  useReactFlow,
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
@@ -58,6 +59,7 @@ export default function App() {
   const [chatGenerating, setChatGenerating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   // @ts-ignore
   // WebSocket connection
@@ -65,8 +67,8 @@ export default function App() {
 
   // Handle graph_update messages (Task 2.4, AC1)
   useEffect(() => {
-    if (!wsHook.lastGraphUpdate) return;
-    const data = wsHook.lastGraphUpdate as { nodes?: unknown[]; edges?: unknown[] };
+    if (!lastGraphUpdate) return;
+    const data = wsHook.wsHook.lastGraphUpdate as { nodes?: unknown[]; edges?: unknown[] };
     if (data.nodes) {
       setNodes(data.nodes as never[]);
     }
@@ -74,12 +76,12 @@ export default function App() {
       setEdges(data.edges as never[]);
     }
     setChatGenerating(false);
-  }, [wsHook.lastGraphUpdate, setNodes, setEdges]);
+  }, [lastGraphUpdate, setNodes, setEdges]);
 
   // Handle node_update messages (Task 5.4, AC2)
   useEffect(() => {
-    if (!wsHook.lastNodeUpdate) return;
-    const data = wsHook.lastNodeUpdate as { nodeId?: string; status?: string; progress?: number };
+    if (!lastNodeUpdate) return;
+    const data = wsHook.wsHook.lastNodeUpdate as { nodeId?: string; status?: string; progress?: number };
     if (data.nodeId) {
       setNodes((nds) =>
         nds.map((node) => {
@@ -97,12 +99,12 @@ export default function App() {
         }) as never[]
       );
     }
-  }, [wsHook.lastNodeUpdate, setNodes]);
+  }, [lastNodeUpdate, setNodes]);
 
   // Handle edge_update messages (Task 6.2)
   useEffect(() => {
-    if (!wsHook.lastEdgeUpdate) return;
-    const data = wsHook.lastEdgeUpdate as { source?: string; target?: string; tension?: number };
+    if (!lastEdgeUpdate) return;
+    const data = wsHook.wsHook.lastEdgeUpdate as { source?: string; target?: string; tension?: number };
     if (data.source && data.target) {
       setEdges((eds) =>
         eds.map((edge) => {
@@ -118,7 +120,7 @@ export default function App() {
         }) as never[]
       );
     }
-  }, [wsHook.lastEdgeUpdate, setEdges]);
+  }, [lastEdgeUpdate, setEdges]);
 
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((edges) => addEdge(connection, edges)),
@@ -205,7 +207,7 @@ export default function App() {
       setChatGenerating(true);
       wsHook.sendMessage({ type: 'goal', text });
     },
-    [wsHook.sendMessage]
+    [sendMessage]
   );
 
   return (
@@ -236,10 +238,10 @@ export default function App() {
             width: '8px',
             height: '8px',
             borderRadius: '50%',
-            background: wsHook.connected ? '#22c55e' : '#ef4444',
+            background: wsHook.wsHook.connected ? '#22c55e' : '#ef4444',
           }}
         />
-        {wsHook.connected ? 'Connected' : 'DiswsHook.connected'}
+        {wsHook.connected ? 'Connected' : 'Disconnected'}
       </div>
 
       {/* Phase bands at top of canvas (Task 3.3) */}
@@ -290,6 +292,7 @@ export default function App() {
           edgeTypes={edgeTypes}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          fitView
           nodesDraggable={true}
           nodesConnectable={true}
         >
@@ -308,8 +311,8 @@ export default function App() {
       <MonologuePanel
         collapsed={monologueCollapsed}
         onToggleCollapse={() => setMonologueCollapsed((prev) => !prev)}
-        messages={wsHook.monologueMessages}
-        isStreaming={wsHook.isStreaming}
+        messages={monologueMessages}
+        wsHook.isStreaming={isStreaming}
       />
     </div>
   );
