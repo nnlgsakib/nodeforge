@@ -4,6 +4,7 @@ BINARY = nforge
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS = -X github.com/nnlgsakib/nodeforge/cmd/nforge.version=$(VERSION) -s -w
 BUILD_FLAGS = -trimpath
+GOARCH := amd64
 
 # Detect OS
 ifneq ($(OS),Windows_NT)
@@ -24,7 +25,7 @@ endif
 # Allow overriding target OS via make GOOS=linux or GOOS=windows
 GOOS ?= $(TARGET_OS)
 VALID_GOOS := linux darwin windows
-ifneq ($(filter $(GOOS),$(VALID_GOOS)),)
+ifeq ($(filter $(GOOS),$(VALID_GOOS)),)
   $(error Invalid GOOS=$(GOOS). Valid values: linux, darwin, windows)
 endif
 ifeq ($(GOOS),windows)
@@ -35,19 +36,25 @@ endif
 
 BINARY_PATH = $(BINARY)$(TARGET_EXT)
 
+# Export GOOS and GOARCH so go build sees them without inline VAR=val syntax
+export GOOS
+export GOARCH
+
 build: frontend-build
-	@echo "Building for $(GOOS)/amd64..."
-	GOOS=$(GOOS) GOARCH=amd64 go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_PATH) main.go
+	@echo "Building for $(GOOS)/$(GOARCH)..."
+	go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_PATH) main.go
 	@echo "Built: $(BINARY_PATH)"
 
+build-linux: export GOOS := linux
 build-linux: frontend-build
 	@echo "Cross-compiling for Linux..."
-	GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY) main.go
+	go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY) main.go
 	@echo "Built: $(BINARY)"
 
+build-windows: export GOOS := windows
 build-windows: frontend-build
 	@echo "Cross-compiling for Windows..."
-	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY).exe main.go
+	go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY).exe main.go
 	@echo "Built: $(BINARY).exe"
 
 dev:
