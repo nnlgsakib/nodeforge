@@ -114,6 +114,28 @@ func (h *wsHub) BroadcastNodeUpdate(nodeID, status string, progress float64) {
 	h.broadcast <- data
 }
 
+// BroadcastEdgeUpdate sends an edge update to all clients
+func (h *wsHub) BroadcastEdgeUpdate(source, target string, tension float64) {
+	data, err := json.Marshal(map[string]interface{}{
+		"type":    "edge_update",
+		"source":  source,
+		"target":  target,
+		"tension": tension,
+	})
+	if err != nil {
+		return
+	}
+	h.broadcast <- data
+}
+
+// BroadcastRaw sends raw bytes to all connected clients
+func (h *wsHub) BroadcastRaw(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	h.broadcast <- data
+}
+
 var (
 	servePort   string
 	distFS      embed.FS
@@ -227,7 +249,7 @@ func runServer() error {
 	}
 	ollamaProv, err := llm.NewProvider(ollamaCfg)
 	if err == nil {
-		hub.graphGen = engine.NewGenerator(ollamaProv)
+		hub.graphGen = engine.NewGenerator(ollamaProv, store)
 	}
 
 	// WebSocket upgrader

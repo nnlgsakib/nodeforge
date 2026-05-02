@@ -11,6 +11,7 @@ interface MonologuePanelProps {
   onToggleCollapse: () => void;
   messages: MonologueMessage[];
   isStreaming?: boolean;
+  onClear?: () => void;
 }
 
 export const MonologuePanel: React.FC<MonologuePanelProps> = ({
@@ -18,6 +19,7 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
   onToggleCollapse,
   messages,
   isStreaming = false,
+  onClear,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -48,10 +50,11 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
     setExporting(false);
   }, [messages]);
 
-  const handleClear = useCallback(() => {
-    // This would need a callback prop to actually clear
-    console.log('Clear monologue history');
-  }, []);
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+    }
+  };
 
   return (
     <div

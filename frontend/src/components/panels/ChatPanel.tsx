@@ -31,7 +31,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const isValidInput = input.trim().length >= 10;
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = () => {
     const text = input.trim();
     if (!text || text.length < 10 || generating) return;
 
@@ -44,7 +44,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setMessages((prev) => [...prev, userMessage]);
     onSendGoal(text);
     setInput('');
-  }, [input, generating, onSendGoal]);
+  };
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

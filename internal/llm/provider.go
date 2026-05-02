@@ -112,17 +112,36 @@ func Race(ctx context.Context, providers []Provider, req *ChatRequest) (*RaceRes
 		wg.Add(1)
 		go func(prov Provider) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					if r != nil {
+						results <- result{err: fmt.Errorf("provider %s panicked: %v", prov.Name(), r)}
+					}
+				}
+			}()
 			start := time.Now()
 			resp, err := prov.Chat(ctx, req)
 			dur := time.Since(start)
+			if ctx.Err() != nil {
+				return
+			}
 			results <- result{resp: resp, duration: dur, err: err, name: prov.Name()}
 		}(p)
 	}
 
+	// Close results channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
 	// Wait for first successful result
-	for i := 0; i < len(providers); i++ {
+	for {
 		select {
-		case r := <-results:
+		case r, ok := <-results:
+			if !ok {
+				return nil, fmt.Errorf("all providers failed")
+			}
 			if r.err == nil {
 				cancel() // cancel remaining requests
 				return &RaceResult{
@@ -132,9 +151,7 @@ func Race(ctx context.Context, providers []Provider, req *ChatRequest) (*RaceRes
 				}, nil
 			}
 		case <-ctx.Done():
-			return nil, fmt.Errorf("race cancelled")
+			return nil, fmt.Errorf("race cancelled: %w", ctx.Err())
 		}
 	}
-
-	return nil, fmt.Errorf("all providers failed")
 }

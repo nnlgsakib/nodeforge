@@ -1,6 +1,6 @@
 # Story 2.1: Chat Interface & Auto-Generated Node Graph
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -195,3 +195,57 @@ tencent/hy3-preview:free
 - `internal/llm/provider_test.go` (created)
 - `internal/context/memory.go` (created)
 - `internal/context/memory_test.go` (modified)
+
+### Review Findings
+
+#### Decision Needed (0)
+
+(None — all resolved or deferred)
+
+#### Patches Fixed (14)
+
+- [x] [Review][Patch] checkAcceptanceCriteria always returns true, retry loop never triggers [internal/engine/executor.go] — FIXED: now returns false when criteria not met
+- [x] [Review][Patch] Race function: removed WaitGroup causes channel leak, nil panic deadlocks [internal/llm/provider.go] — FIXED: restored WaitGroup, fixed panic recovery
+- [x] [Review][Patch] BroadcastEdgeUpdate ignores JSON marshal error [cmd/nforge/serve.go] — FIXED: now returns early on marshal error
+- [x] [Review][Patch] useWebSocket: stream timeouts not cleaned on unmount/disconnect [frontend/src/hooks/useWebSocket.ts] — FIXED: timeouts cleared on unmount and disconnect
+- [x] [Review][Patch] MonologuePanel clear button not implemented, localMessages dead code [frontend/src/components/panels/MonologuePanel.tsx] — FIXED: clear button wired to onClear prop, removed dead code
+- [x] [Review][Patch] Ollama ChatStream ignores context cancellation during streaming [internal/llm/ollama.go] — FIXED: added ctx.Done() check in scan loop
+- [x] [Review][Patch] Ollama ChatStream: Missing HTTP non-200 status check [internal/llm/ollama.go] — FIXED: added status code check
+- [x] [Review][Patch] Ollama ChatStream: Ignored error from http.NewRequestWithContext [internal/llm/ollama.go] — FIXED: now handles the error
+- [x] [Review][Patch] Graph ID collision risk with millisecond-based IDs [internal/engine/graph.go] — FIXED: added random suffix to ID generation
+- [x] [Review][Patch] graph Generate: Empty nodes in valid JSON creates invalid graph [internal/engine/graph.go] — FIXED: validates len(nodes) > 0 after parsing
+- [x] [Review][Patch] graph saveGraph: No validation of empty graph ID [internal/engine/graph.go] — FIXED: checks graph.ID != "" before saving
+- [x] [Review][Patch] memory GetGraph/GetNodeOutput: No handling of empty stored values [internal/context/memory.go] — FIXED: checks len(val) == 0 in callbacks
+- [x] [Review][Patch] Missing llm_chunk and monologue WebSocket messages from backend [internal/engine/executor.go] — FIXED: added streamLLMResponse and ChatStream usage
+- [x] [Review][Patch] Rapid WebSocket messages overwrite unprocessed updates [frontend/src/hooks/useWebSocket.ts] — FIXED: changed to queue-based state in hook and App.tsx
+
+#### Deferred (4)
+
+- [x] [Review][Defer] Vim/Emacs canvas navigation keybindings are non-functional [frontend/src/App.tsx:143-161] — deferred to story 3-1/3-3
+- [x] [Review][Defer] Execution controls (pause/skip/fork/retry) lack backend support [internal/engine/executor.go, frontend/src/App.tsx] — deferred to story 2-7
+- [x] [Review][Defer] WebSocket <50ms latency guarantee not implemented [cmd/nforge/serve.go] — deferred to story 2-6/6-6
+- [x] [Review][Defer] Node color-coding and animated edges not verified [frontend/src/components/canvas/NodeTypes.tsx, EdgeTypes.tsx] — deferred to later stories
+
+#### Dismissed (6)
+
+- Edge update handler uses undefined `tension` variable — FALSE POSITIVE: `tension` is defined as `const tension = data.tension || 0`
+- ChatPanel handleSubmit loses useCallback memoization — Original was useless (dep on `input` which changes every keystroke)
+- MonologuePanel handleClear loses useCallback memoization — Negligible performance impact
+- graph saveGraph: Context cancellation not propagated to BadgerDB — Pre-existing BadgerDB limitation
+- executor: Large AcceptanceCriteria causes performance degradation — Theoretical only, criteria lists are small
+- Executor retry loop ignores context cancellation between retries — Context IS checked at start of each iteration
+
+#### Previously Fixed by Current Diff (12)
+
+- [x] Static graph ID generation causes duplicate IDs — FIXED: now uses `time.Now().UnixMilli()`
+- [x] Generated graphs not persisted to BadgerDB — FIXED: `saveGraph()` added
+- [x] Graph generation falls back to default without LLM failure notification — FIXED: now logs warnings
+- [x] BadgerDB value use-after-free — FIXED: now copies data in `GetGraph`/`GetNodeOutput`
+- [x] Executor context building uses background context — FIXED: now uses `ctx`
+- [x] Malformed context string sent to LLM — FIXED: now uses `strings.Join`
+- [x] Disconnected status shows typo'd literal string — FIXED: now shows "Disconnected"
+- [x] Unsafe never[] casts — FIXED: now uses `as any[]`
+- [x] @ts-ignore suppresses type error — FIXED: removed
+- [x] Simulated node execution ignores context cancellation — FIXED: now uses `select` with `ctx.Done()`
+- [x] Chat generating state stuck when WebSocket is disconnected — FIXED: now checks `connected`
+- [x] Unused WaitGroup in provider Race function — REMOVED but caused new bugs (see patch #2 above)

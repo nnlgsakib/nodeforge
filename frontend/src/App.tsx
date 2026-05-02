@@ -59,66 +59,86 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // @ts-ignore
-  // WebSocket connection
-  const wsHook = useWebSocket();
+    // WebSocket connection
+  const {
+    connected,
+    monologueMessages,
+    isStreaming,
+    sendMessage,
+    graphUpdateQueue,
+    nodeUpdateQueue,
+    edgeUpdateQueue,
+    clearGraphUpdates,
+    clearNodeUpdates,
+    clearEdgeUpdates,
+    clearMonologueMessages,
+  } = useWebSocket();
 
   // Handle graph_update messages (Task 2.4, AC1)
   useEffect(() => {
-    if (!wsHook.lastGraphUpdate) return;
-    const data = wsHook.lastGraphUpdate as { nodes?: unknown[]; edges?: unknown[] };
-    if (data.nodes) {
-      setNodes(data.nodes as never[]);
+    if (graphUpdateQueue.length === 0) return;
+    for (const item of graphUpdateQueue) {
+      const data = item as { nodes?: unknown[]; edges?: unknown[] };
+      if (data.nodes) {
+        setNodes(data.nodes as any[]);
+      }
+      if (data.edges) {
+        setEdges(data.edges as any[]);
+      }
+      setChatGenerating(false);
     }
-    if (data.edges) {
-      setEdges(data.edges as never[]);
-    }
-    setChatGenerating(false);
-  }, [wsHook.lastGraphUpdate, setNodes, setEdges]);
+    clearGraphUpdates();
+  }, [graphUpdateQueue, setNodes, setEdges, clearGraphUpdates]);
 
   // Handle node_update messages (Task 5.4, AC2)
   useEffect(() => {
-    if (!wsHook.lastNodeUpdate) return;
-    const data = wsHook.lastNodeUpdate as { nodeId?: string; status?: string; progress?: number };
-    if (data.nodeId) {
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === data.nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                status: data.status || node.data?.status,
-                progress: data.progress ?? node.data?.progress,
-              },
-            };
-          }
-          return node;
-        }) as never[]
-      );
+    if (nodeUpdateQueue.length === 0) return;
+    for (const item of nodeUpdateQueue) {
+      const data = item as { nodeId?: string; status?: string; progress?: number };
+      if (data.nodeId) {
+        setNodes((nds) =>
+          nds.map((node) => {
+            if (node.id === data.nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: data.status || node.data?.status,
+                  progress: data.progress ?? node.data?.progress,
+                },
+              };
+            }
+            return node;
+          }) as any[]
+        );
+      }
     }
-  }, [wsHook.lastNodeUpdate, setNodes]);
+    clearNodeUpdates();
+  }, [nodeUpdateQueue, setNodes, clearNodeUpdates]);
 
   // Handle edge_update messages (Task 6.2)
   useEffect(() => {
-    if (!wsHook.lastEdgeUpdate) return;
-    const data = wsHook.lastEdgeUpdate as { source?: string; target?: string; tension?: number };
-    if (data.source && data.target) {
-      setEdges((eds) =>
-        eds.map((edge) => {
-          if (edge.source === data.source && edge.target === data.target) {
-            const tension = data.tension || 0;
-            let edgeType = 'default';
-            if (tension > 0.7) edgeType = 'tension';
-            else if (tension > 0.3) edgeType = 'active';
-            else if (tension === 0) edgeType = 'success';
-            return { ...edge, type: edgeType, data: { ...edge.data, tension } };
-          }
-          return edge;
-        }) as never[]
-      );
+    if (edgeUpdateQueue.length === 0) return;
+    for (const item of edgeUpdateQueue) {
+      const data = item as { source?: string; target?: string; tension?: number };
+      if (data.source && data.target) {
+        setEdges((eds) =>
+          eds.map((edge) => {
+            if (edge.source === data.source && edge.target === data.target) {
+              const tension = data.tension || 0;
+              let edgeType = 'default';
+              if (tension > 0.7) edgeType = 'tension';
+              else if (tension > 0.3) edgeType = 'active';
+              else if (tension === 0) edgeType = 'success';
+              return { ...edge, type: edgeType, data: { ...edge.data, tension } };
+            }
+            return edge;
+          }) as any[]
+        );
+      }
     }
-  }, [wsHook.lastEdgeUpdate, setEdges]);
+    clearEdgeUpdates();
+  }, [edgeUpdateQueue, setEdges, clearEdgeUpdates]);
 
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((edges) => addEdge(connection, edges)),
@@ -159,22 +179,22 @@ export default function App() {
         case 'p':
           e.preventDefault();
           setIsPaused((prev) => !prev);
-          wsHook.sendMessage({ type: 'pause', paused: !isPaused });
+          sendMessage({ type: 'pause', paused: !isPaused });
           console.log(`Session ${isPaused ? 'resumed' : 'paused'}`);
           break;
         case 's':
           e.preventDefault();
-          wsHook.sendMessage({ type: 'skip_node' });
+          sendMessage({ type: 'skip_node' });
           console.log('Skip node triggered');
           break;
         case 'f':
           e.preventDefault();
-          wsHook.sendMessage({ type: 'fork_session' });
+          sendMessage({ type: 'fork_session' });
           console.log('Fork session triggered');
           break;
         case 'r':
           e.preventDefault();
-          wsHook.sendMessage({ type: 'retry_node' });
+          sendMessage({ type: 'retry_node' });
           console.log('Retry failed node triggered');
           break;
         case 'm':
@@ -186,7 +206,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, wsHook.sendMessage]);
+  }, [isPaused, sendMessage]);
 
   const handleCreateProject = async (projectName: string) => {
     try {
@@ -202,10 +222,14 @@ export default function App() {
 
   const handleSendGoal = useCallback(
     (text: string) => {
+      if (!connected) {
+        setNotification({ type: 'error', message: 'WebSocket not connected. Please wait or refresh.' });
+        return;
+      }
       setChatGenerating(true);
-      wsHook.sendMessage({ type: 'goal', text });
+      sendMessage({ type: 'goal', text });
     },
-    [wsHook.sendMessage]
+    [connected, sendMessage]
   );
 
   return (
@@ -236,10 +260,10 @@ export default function App() {
             width: '8px',
             height: '8px',
             borderRadius: '50%',
-            background: wsHook.connected ? '#22c55e' : '#ef4444',
+            background: connected ? '#22c55e' : '#ef4444',
           }}
         />
-        {wsHook.connected ? 'Connected' : 'DiswsHook.connected'}
+        {connected ? 'Connected' : 'Disconnected'}
       </div>
 
       {/* Phase bands at top of canvas (Task 3.3) */}
@@ -308,8 +332,9 @@ export default function App() {
       <MonologuePanel
         collapsed={monologueCollapsed}
         onToggleCollapse={() => setMonologueCollapsed((prev) => !prev)}
-        messages={wsHook.monologueMessages}
-        isStreaming={wsHook.isStreaming}
+        messages={monologueMessages}
+        isStreaming={isStreaming}
+        onClear={clearMonologueMessages}
       />
     </div>
   );

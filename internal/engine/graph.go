@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/nnlgsakib/nodeforge/internal/llm"
+	nfContext "github.com/nnlgsakib/nodeforge/internal/context"
 )
 
 // NodeType represents the type of a graph node
@@ -65,11 +68,12 @@ type Graph struct {
 // Generator creates graphs from goals
 type Generator struct {
 	llmProvider llm.Provider
+	store        *nfContext.Store
 }
 
 // NewGenerator creates a new graph generator
-func NewGenerator(provider llm.Provider) *Generator {
-	return &Generator{llmProvider: provider}
+func NewGenerator(provider llm.Provider, store *nfContext.Store) *Generator {
+	return &Generator{llmProvider: provider, store: store}
 }
 
 // Generate creates a node graph from a user goal
@@ -112,17 +116,26 @@ Output JSON format:
 
 	if g.llmProvider == nil {
 		// Fallback: generate default graph without LLM
-		return g.generateDefaultGraph(goal), nil
+		log.Println("[WARN] LLM provider is nil, falling back to default graph")
+		graph := g.generateDefaultGraph(goal)
+		g.saveGraph(ctx, graph)
+		return graph, nil
 	}
 
 	resp, err := g.llmProvider.Chat(ctx, req)
 	if err != nil {
 		// Fallback to default graph on LLM failure
-		return g.generateDefaultGraph(goal), nil
+		log.Printf("[WARN] LLM chat failed: %v, falling back to default graph", err)
+		graph := g.generateDefaultGraph(goal)
+		g.saveGraph(ctx, graph)
+		return graph, nil
 	}
 
 	if len(resp.Choices) == 0 {
-		return g.generateDefaultGraph(goal), nil
+		log.Println("[WARN] LLM returned empty choices, falling back to default graph")
+		graph := g.generateDefaultGraph(goal)
+		g.saveGraph(ctx, graph)
+		return graph, nil
 	}
 
 	// Parse LLM response
@@ -135,7 +148,18 @@ Output JSON format:
 	}
 
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &llmOutput); err != nil {
-		return g.generateDefaultGraph(goal), nil
+		log.Printf("[WARN] Failed to parse LLM response: %v, falling back to default graph", err)
+		graph := g.generateDefaultGraph(goal)
+		g.saveGraph(ctx, graph)
+		return graph, nil
+	}
+
+	// Validate that we got valid nodes
+	if len(llmOutput.Nodes) == 0 {
+		log.Printf("[WARN] LLM returned empty nodes, falling back to default graph")
+		graph := g.generateDefaultGraph(goal)
+		g.saveGraph(ctx, graph)
+		return graph, nil
 	}
 
 	// Build nodes
@@ -160,7 +184,24 @@ Output JSON format:
 		})
 	}
 
+	// Persist graph to BadgerDB
+	g.saveGraph(ctx, graph)
+
 	return graph, nil
+}
+
+// saveGraph persists a graph to BadgerDB if store is available
+func (g *Generator) saveGraph(ctx context.Context, graph *Graph) {
+	if g.store == nil {
+		return
+	}
+	if graph.ID == "" {
+		log.Printf("[WARN] Skipping save: graph ID is empty")
+		return
+	}
+	if err := g.store.SaveGraph(ctx, graph.ID, graph); err != nil {
+		log.Printf("[WARN] Failed to save graph %s to BadgerDB: %v", graph.ID, err)
+	}
 }
 
 // generateDefaultGraph creates a default graph without LLM
@@ -200,8 +241,12 @@ func (g *Generator) generateDefaultGraph(goal string) *Graph {
 }
 
 func generateID() string {
-	// Simple ID generation - in production use UUID
-	return fmt.Sprintf("graph-%d", currentTimeMillis())
+	return fmt.Sprintf("graph-%d-%d", currentTimeMillis(), fastRand())
+}
+
+// fastRand returns a pseudo-random number for ID generation
+func fastRand() int {
+	return int(time.Now().UnixNano() % 100000)
 }
 
 func currentTime() string {
@@ -209,10 +254,9 @@ func currentTime() string {
 }
 
 func currentTimeMillis() int64 {
-	// Placeholder - use actual time in production
-	return 1714656000000 // static for now
+	return time.Now().UnixMilli()
 }
 
 func currentTimeMillisStr() string {
-	return "2026-05-02T12:00:00Z"
+	return time.Now().UTC().Format(time.RFC3339)
 }

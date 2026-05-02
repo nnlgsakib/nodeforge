@@ -1,20 +1,7 @@
-## Deferred from: code review of 1-3-gin-server-with-nforge-serve (2026-04-30)
+# Deferred Work
 
-- No HTTP server timeouts — no ReadTimeout/WriteTimeout/IdleTimeout, vulnerable to slowloris [serve.go:222-225] — deferred, pre-existing
-- Unlimited WebSocket connections — no cap, no connection tracking. Spec requires 5000+ support [serve.go:102-115] — deferred, later story
-- WebSocket messages ignored — spec defines message format but messages are discarded [serve.go:109-113] — deferred, later story
-- Hardcoded 5s shutdown timeout — not configurable [serve.go:241] — deferred, pre-existing
-- CORS no credentials support — `Access-Control-Allow-Credentials` not set [serve.go:76-85] — deferred, pre-existing
-- No integration tests (Task 5) — no test files provided [N/A] — deferred, needs test framework decision
-- Inconsistent error logging — mix of `fmt.Printf`, returned errors, and silent client messages [throughout serve.go] — deferred, pre-existing
+## Deferred from: code review of 2-1-chat-interface-and-auto-generated-node-graph (2026-05-02)
 
-## Deferred from: code review of 1-4-project-creation-via-cli-and-ui.md (2026-04-30)
-
-- Large frontend files read entirely into memory [serve.go:NoRoute] — deferred, pre-existing
-- Missing //go:embed directive for frontend assets [main.go] — `var distFS embed.FS` without `//go:embed` comment. Pre-existing, not introduced by Story 1.4.
-
-## Deferred from: code review of 1-8-frontend-scaffolding-with-vite-and-react-flow (2026-05-02)
-
-- Makefile OS detection is GNU Make-specific [Makefile:16] — deferred, pre-existing, works on common platforms
-- Makefile build targets duplicate logic [Makefile:41-55] — deferred, pre-existing, works correctly, just style issue
-- uname -s returns non-Linux/non-Darwin value (e.g., FreeBSD, Solaris) [Makefile:16-29] — deferred, edge case, GNU Make assumption
+- Vim/Emacs canvas navigation keybindings are non-functional — AC3 violation: keybindings only log to console with no actual React Flow canvas panning — deferred to story 3-1/3-3 (UX: canvas navigation)
+- Execution controls (pause/skip/fork/retry) lack backend support — AC3 violation: frontend sends messages but executor.go has no handlers — deferred to story 2-7 (incremental execution and web worker offloading)
+- WebSocket <50ms latency guarantee not implemented — AC1/NFR-01 violation: no code enforces or measures <50ms broadcast latency — deferred to story 2-6 (performance optimization) or 6-6 (provider failover & performance)

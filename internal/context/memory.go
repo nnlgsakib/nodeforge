@@ -54,7 +54,12 @@ func (s *Store) GetGraph(ctx context.Context, graphID string) (json.RawMessage, 
 		}
 
 		return item.Value(func(val []byte) error {
-			data = val
+			if len(val) == 0 {
+				return fmt.Errorf("graph %s has empty value", graphID)
+			}
+			// Copy the data since val is only valid during this callback
+			data = make(json.RawMessage, len(val))
+			copy(data, val)
 			return nil
 		})
 	})
@@ -84,7 +89,12 @@ func (s *Store) GetNodeOutput(ctx context.Context, graphID, nodeID string) (stri
 		}
 
 		return item.Value(func(val []byte) error {
-			output = val
+			if len(val) == 0 {
+				return fmt.Errorf("node output %s:%s is empty", graphID, nodeID)
+			}
+			// Copy the data since val is only valid during this callback
+			output = make([]byte, len(val))
+			copy(output, val)
 			return nil
 		})
 	})
