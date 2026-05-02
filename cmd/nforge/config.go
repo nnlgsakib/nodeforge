@@ -30,6 +30,12 @@ var setCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a configuration key to a value",
 	Args:  cobra.ExactArgs(2),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return getSupportedKeys(), cobra.ShellCompDirectiveNoFileComp
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 		value := args[1]
@@ -95,6 +101,9 @@ var getCmd = &cobra.Command{
 	Use:   "get <key>",
 	Short: "Get a configuration value",
 	Args:  cobra.ExactArgs(1),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return getSupportedKeys(), cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 
