@@ -1,6 +1,6 @@
 # Story 2.1: Chat Interface & Auto-Generated Node Graph
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
