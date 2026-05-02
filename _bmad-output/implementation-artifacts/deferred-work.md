@@ -12,3 +12,9 @@
 
 - Large frontend files read entirely into memory [serve.go:NoRoute] — deferred, pre-existing
 - Missing //go:embed directive for frontend assets [main.go] — `var distFS embed.FS` without `//go:embed` comment. Pre-existing, not introduced by Story 1.4.
+
+## Deferred from: code review of 1-8-frontend-scaffolding-with-vite-and-react-flow (2026-05-02)
+
+- Makefile OS detection is GNU Make-specific [Makefile:16] — deferred, pre-existing, works on common platforms
+- Makefile build targets duplicate logic [Makefile:41-55] — deferred, pre-existing, works correctly, just style issue
+- uname -s returns non-Linux/non-Darwin value (e.g., FreeBSD, Solaris) [Makefile:16-29] — deferred, edge case, GNU Make assumption

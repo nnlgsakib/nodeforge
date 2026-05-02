@@ -1,0 +1,153 @@
+warning: in the working copy of 'cmd/nforge/config.go', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'cmd/nforge/root.go', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'cmd/nforge/serve.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/cmd/nforge/config.go b/cmd/nforge/config.go
+index 51142d6..04bd145 100644
+--- a/cmd/nforge/config.go
++++ b/cmd/nforge/config.go
+@@ -30,6 +30,12 @@ var setCmd = &cobra.Command{
+ 	Use:   "set <key> <value>",
+ 	Short: "Set a configuration key to a value",
+ 	Args:  cobra.ExactArgs(2),
++	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
++		if len(args) == 0 {
++			return getSupportedKeys(), cobra.ShellCompDirectiveNoFileComp
++		}
++		return nil, cobra.ShellCompDirectiveNoFileComp
++	},
+ 	RunE: func(cmd *cobra.Command, args []string) error {
+ 		key := args[0]
+ 		value := args[1]
+@@ -95,6 +101,9 @@ var getCmd = &cobra.Command{
+ 	Use:   "get <key>",
+ 	Short: "Get a configuration value",
+ 	Args:  cobra.ExactArgs(1),
++	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
++		return getSupportedKeys(), cobra.ShellCompDirectiveNoFileComp
++	},
+ 	RunE: func(cmd *cobra.Command, args []string) error {
+ 		key := args[0]
+ 
+diff --git a/cmd/nforge/root.go b/cmd/nforge/root.go
+index bfafead..cd9252e 100644
+--- a/cmd/nforge/root.go
++++ b/cmd/nforge/root.go
+@@ -13,10 +13,25 @@ var version = "dev" // Set via ldflags at build time
+ var verboseMode bool
+ var configPath string
+ 
++// NodeTypes defines the valid node types for completion
++var NodeTypes = []string{"Goal", "Spec", "Plan", "Implement", "Test", "Review"}
++// NodeTypeDescriptions maps node types to their descriptions
++var NodeTypeDescriptions = map[string]string{
++	"Goal":   "Top-level goal node",
++	"Spec":   "Specification node",
++	"Plan":   "Planning node",
++	"Implement": "Implementation node",
++	"Test":   "Testing node",
++	"Review": "Review node",
++}
++
+ var rootCmd = &cobra.Command{
+ 	Use:   "nforge",
+ 	Short: "NodeForge OS - Spec-driven development workbench",
+ 	Version: version,
++	CompletionOptions: cobra.CompletionOptions{
++		DisableDefaultCmd: false,
++	},
+ }
+ 
+ func init() {
+@@ -24,6 +39,38 @@ func init() {
+ 	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", getEnvBool("NFORGE_VERBOSE", false), "Enable debug logging (env: NFORGE_VERBOSE)")
+ 	rootCmd.PersistentFlags().StringVar(&configPath, "config-path", getDefaultConfigPath(), "Config file path (env: NFORGE_CONFIG)")
+ 
++	// Register flag completions
++	rootCmd.RegisterFlagCompletionFunc("config-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
++		return nil, cobra.ShellCompDirectiveDefault // Default file/directory completion
++	})
++
++	// Initialize and customize completion command
++	rootCmd.InitDefaultCompletionCmd()
++	// Update completion command help text with installation instructions
++	for _, cmd := range rootCmd.Commands() {
++		if cmd.Name() == "completion" {
++			cmd.Long = `Generate shell completion scripts for nforge.
++
++Installation instructions:
++  Bash:
++    source <(nforge completion bash)
++    # Or add to ~/.bashrc:
++    echo 'source <(nforge completion bash)' >> ~/.bashrc
++
++  Zsh:
++    source <(nforge completion zsh)
++    # Or add to ~/.zshrc:
++    echo 'source <(nforge completion zsh)' >> ~/.zshrc
++
++  PowerShell:
++    . (nforge completion powershell)
++    # Or add to your profile:
++    Add-Content $PROFILE ". (nforge completion powershell)"
++`
++			break
++		}
++	}
++
+ 	// Register subcommands
+ 	rootCmd.AddCommand(serveCmd)
+ }
+diff --git a/cmd/nforge/serve.go b/cmd/nforge/serve.go
+index 45c4eee..5a9ea9f 100644
+--- a/cmd/nforge/serve.go
++++ b/cmd/nforge/serve.go
+@@ -51,6 +51,9 @@ var serveCmd = &cobra.Command{
+ 
+ func init() {
+ 	serveCmd.Flags().StringVar(&servePort, "port", "8080", "Port to run the server on (default: 8080)")
++	serveCmd.RegisterFlagCompletionFunc("port", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
++		return []string{"8080", "9090", "3000"}, cobra.ShellCompDirectiveDefault
++	})
+ }
+ 
+ func validatePort(port string) bool {
+warning: in the working copy of 'cmd/nforge/run.go', LF will be replaced by CRLF the next time Git touches it
+diff --git a/cmd/nforge/run.go b/cmd/nforge/run.go
+new file mode 100644
+index 0000000..bb139b0
+--- /dev/null
++++ b/cmd/nforge/run.go
+@@ -0,0 +1,33 @@
++package nforge
++
++import (
++	"fmt"
++
++	"github.com/spf13/cobra"
++)
++
++var runCmd = &cobra.Command{
++	Use:   "run",
++	Short: "Run a spec file",
++	Args:  cobra.MaximumNArgs(1),
++	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
++		// Return node types with descriptions
++		completions := make([]string, 0, len(NodeTypes))
++		for _, nt := range NodeTypes {
++			if desc, ok := NodeTypeDescriptions[nt]; ok {
++				completions = append(completions, cobra.CompletionWithDesc(nt, desc))
++			} else {
++				completions = append(completions, nt)
++			}
++		}
++		return completions, cobra.ShellCompDirectiveNoFileComp
++	},
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Println("run: not yet implemented (story 1.8)")
++		return nil
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(runCmd)
++}

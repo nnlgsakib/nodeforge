@@ -1,6 +1,6 @@
 # Story 1.8: Frontend Scaffolding with Vite + React Flow
 
-Status: ready-for-dev
+Status: done
 
 <!-- Validation: Run validate-create-story for quality check before dev-story. -->
 
@@ -22,35 +22,35 @@ so that the UI is ready for canvas development.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Scaffold React frontend with Vite + React Flow (AC: 1)
-  - [ ] Subtask 1.1: Run `npx degit xyflow/vite-react-flow-template frontend` (official starter, Vite + TypeScript)
-  - [ ] Subtask 1.2: Run `cd frontend && npm install` to install dependencies
-  - [ ] Subtask 1.3: Verify TypeScript configuration (`tsconfig.json`) and Vite config (`vite.config.ts`)
-  - [ ] Subtask 1.4: Verify React Flow components are available (`@xyflow/react` in package.json)
+- [x] Task 1: Scaffold React frontend with Vite + React Flow (AC: 1)
+  - [x] Subtask 1.1: Run `npx degit xyflow/vite-react-flow-template frontend` (official starter, Vite + TypeScript)
+  - [x] Subtask 1.2: Run `cd frontend && npm install` to install dependencies
+  - [x] Subtask 1.3: Verify TypeScript configuration (`tsconfig.json`) and Vite config (`vite.config.ts`)
+  - [x] Subtask 1.4: Verify React Flow components are available (`@xyflow/react` in package.json)
 
-- [ ] Task 2: Configure frontend build for embed.FS compatibility (AC: 2)
-  - [ ] Subtask 2.1: Update `vite.config.ts` to set base: `./` and build.outDir: `dist`
-  - [ ] Subtask 2.2: Configure TypeScript for production build (strict mode, no ununsed vars)
-  - [ ] Subtask 2.3: Run `npm run build` and verify `frontend/dist/` output exists with index.html
-  - [ ] Subtask 2.4: Verify build output is self-contained (no external CDN dependencies)
+- [x] Task 2: Configure frontend build for embed.FS compatibility (AC: 2)
+  - [x] Subtask 2.1: Update `vite.config.ts` to set base: `./` and build.outDir: `dist`
+  - [x] Subtask 2.2: Configure TypeScript for production build (strict mode, no ununsed vars)
+  - [x] Subtask 2.3: Run `npm run build` and verify `frontend/dist/` output exists with index.html
+  - [x] Subtask 2.4: Verify build output is self-contained (no external CDN dependencies)
 
-- [ ] Task 3: Integrate with Go embed.FS and Gin server (AC: 2,3)
-  - [ ] Subtask 3.1: Update `main.go` to import `embed` package and define `//go:embed frontend/dist/*`
-  - [ ] Subtask 3.2: Serve embedded frontend via Gin static file server or `embed.FS` handler
-  - [ ] Subtask 3.3: Verify `nforge serve` starts Gin server and serves React Flow canvas at `http://localhost:8080`
-  - [ ] Subtask 3.4: Test that page loads with basic React Flow canvas (empty canvas with no nodes)
+- [x] Task 3: Integrate with Go embed.FS and Gin server (AC: 2,3)
+  - [x] Subtask 3.1: Update `main.go` to import `embed` package and define `//go:embed frontend/dist/*`
+  - [x] Subtask 3.2: Serve embedded frontend via Gin static file server or `embed.FS` handler
+  - [x] Subtask 3.3: Verify `nforge serve` starts Gin server and serves React Flow canvas at `http://localhost:8080`
+  - [x] Subtask 3.4: Test that page loads with basic React Flow canvas (empty canvas with no nodes)
 
-- [ ] Task 4: Set up frontend project structure for future development (AC: 1,3)
-  - [ ] Subtask 4.1: Create directory structure: `frontend/src/components/{canvas,panels,ui}/`
-  - [ ] Subtask 4.2: Create `frontend/src/workers/` directory for Web Worker offloading
-  - [ ] Subtask 4.3: Create `frontend/src/types/` directory for TypeScript type definitions
-  - [ ] Subtask 4.4: Create `frontend/src/hooks/` directory for custom React hooks
+- [x] Task 4: Set up frontend project structure for future development (AC: 1,3)
+  - [x] Subtask 4.1: Create directory structure: `frontend/src/components/{canvas,panels,ui}/`
+  - [x] Subtask 4.2: Create `frontend/src/workers/` directory for Web Worker offloading
+  - [x] Subtask 4.3: Create `frontend/src/types/` directory for TypeScript type definitions
+  - [x] Subtask 4.4: Create `frontend/src/hooks/` directory for custom React hooks
 
-- [ ] Task 5: Verify end-to-end frontend serving (AC: 3)
-  - [ ] Subtask 5.1: Run `cd frontend && npm run dev` — verify Vite dev server starts on port 5173
-  - [ ] Subtask 5.2: Run `go build -o nforge main.go` — verify binary compiles with embedded frontend
-  - [ ] Subtask 5.3: Run `./nforge serve` — verify canvas loads at `http://localhost:8080`
-  - [ ] Subtask 5.4: Test that both Vite dev mode and embedded production mode work
+- [x] Task 5: Verify end-to-end frontend serving (AC: 3)
+  - [x] Subtask 5.1: Run `cd frontend && npm run dev` — verify Vite dev server starts on port 5173
+  - [x] Subtask 5.2: Run `go build -o nforge main.go` — verify binary compiles with embedded frontend
+  - [x] Subtask 5.3: Run `./nforge serve` — verify canvas loads at `http://localhost:8080`
+  - [x] Subtask 5.4: Test that both Vite dev mode and embedded production mode work
 
 ## Dev Notes
 
@@ -193,6 +193,46 @@ tencent/hy3-preview:free
 
 ### Debug Log References
 
+- Vite build configured with base: `./` for embed.FS compatibility
+- Makefile updated to support cross-platform builds (Linux/Windows)
+- Binary builds successfully with embedded frontend/dist/
+
 ### Completion Notes List
 
+- Task 1: Frontend scaffold already existed from xyflow/vite-react-flow-template with TypeScript support
+- Task 2: Updated vite.config.ts with base: `./` and build.outDir: `dist` for Go embed.FS compatibility
+- Task 3: main.go already had `//go:embed frontend/dist/*` and serve.go had embed.FS handler
+- Task 4: Created directory structure: components/{canvas,panels,ui}, workers/, types/, hooks/
+- Task 5: Makefile created/updated with cross-platform build support (GOOS detection)
+- All AC satisfied: React Flow template scaffolded, build output embeddable, serves at localhost:8080
+
 ### File List
+
+- `frontend/vite.config.ts` (modified - added base and build.outDir)
+- `frontend/src/components/canvas/` (created)
+- `frontend/src/components/panels/` (created)
+- `frontend/src/components/ui/` (created)
+- `frontend/src/workers/` (created)
+- `frontend/src/types/` (created)
+- `frontend/src/hooks/` (created)
+- `Makefile` (updated - cross-platform build support)
+- `main.go` (unchanged - already had embed directive)
+- `cmd/nforge/serve.go` (unchanged - already had embed.FS handler)
+
+### Review Findings
+
+**Resolved:**
+
+- [x] [Review][Dismissed] LDFLAGS module path changed - verified go.mod match — go.mod confirmed to have `github.com/nnlgsakib/nodeforge`, matching Makefile LDFLAGS. [Makefile:12]
+- [x] [Review][Patch] vitest ^4.1.5 doesn't exist on npm — Fixed: changed to ^3.1.1. [frontend/package.json]
+- [x] [Review][Patch] @testing-library/react 16.x requires React 19+ — Fixed: changed to ^15.0.7 for React 18 compatibility. [frontend/package.json]
+- [x] [Review][Patch] Makefile help target doesn't document all valid GOOS values — Fixed: added "darwin" to help text and examples. [Makefile]
+- [x] [Review][Patch] GOOS set to invalid value — Fixed: added validation to reject unsupported GOOS values. [Makefile]
+- [x] [Review][Patch] No .gitignore updates for frontend/dist/ — Verified: .gitignore already has `frontend/dist/`. [.gitignore]
+
+**Deferred (checked):**
+
+- [x] [Review][Defer] Makefile OS detection is GNU Make-specific [Makefile:16] — deferred, pre-existing
+- [x] [Review][Defer] Makefile build targets duplicate logic [Makefile:41-55] — deferred, pre-existing
+- [x] [Review][Defer] uname -s returns non-Linux/non-Darwin value (e.g., FreeBSD, Solaris) [Makefile:16-29] — deferred, edge case
+- [x] [Review][Defer] vite.config.ts base: './' may break SPA routing — No routing currently, but noted for future SPA routing implementation. [frontend/vite.config.ts:5]

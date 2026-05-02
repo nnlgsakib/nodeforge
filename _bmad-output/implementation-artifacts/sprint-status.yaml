@@ -6,7 +6,7 @@
 # story_location: _bmad-output/implementation-artifacts
 
 generated: 2026-04-29T23:37:42+0600
-last_updated: 2026-05-01T00:00:00+0600
+last_updated: 2026-05-02T18:30:00+0600
 project: nfv2
 project_key: NOKEY
 tracking_system: file-system
@@ -49,21 +49,21 @@ development_status:
       1-3-gin-server-with-nforge-serve: done
       1-4-project-creation-via-cli-and-ui: done
       1-5-configuration-management-with-nforge-config: done
-      1-6-system-health-check-with-nforge-doctor: ready-for-dev
-      1-7-cli-tab-completion: ready-for-dev
-      1-8-frontend-scaffolding-with-vite-and-react-flow: ready-for-dev
+      1-6-system-health-check-with-nforge-doctor: done
+      1-7-cli-tab-completion: done
+      1-8-frontend-scaffolding-with-vite-and-react-flow: done
       epic-1-retrospective: optional
 
       # Epic 2: Graph Execution Engine & LLM Integration
-      epic-2: backlog
-      2-1-chat-interface-and-auto-generated-node-graph: backlog
-      2-2-llm-provider-abstraction-and-race-mode: backlog
-      2-3-llm-inner-monologue-panel: backlog
-      2-4-prompt-optimization-and-token-budget: backlog
-      2-5-smart-context-engine-knowledge-graph: backlog
-      2-6-speculative-execution-within-nodes: backlog
-      2-7-incremental-execution-and-web-worker-offloading: backlog
-      2-8-headless-cli-execution: backlog
+      epic-2: in-progress
+      2-1-chat-interface-and-auto-generated-node-graph: review
+      2-2-llm-provider-abstraction-and-race-mode: ready-for-dev
+      2-3-llm-inner-monologue-panel: ready-for-dev
+      2-4-prompt-optimization-and-token-budget: ready-for-dev
+      2-5-smart-context-engine-knowledge-graph: ready-for-dev
+      2-6-speculative-execution-within-nodes: ready-for-dev
+      2-7-incremental-execution-and-web-worker-offloading: ready-for-dev
+      2-8-headless-cli-execution: ready-for-dev
       epic-2-retrospective: optional
 
       # Epic 3: Visual Canvas & User Experience
