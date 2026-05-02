@@ -37,13 +37,14 @@ type wsClient struct {
 
 // wsHub manages all WebSocket clients and message broadcasting
 type wsHub struct {
-	clients    map[*wsClient]bool
-	broadcast  chan []byte
-	register   chan *wsClient
-	unregister chan *wsClient
-	graphGen   *engine.Generator
-	store      *nfcontext.Store
-	mu         sync.RWMutex
+	clients        map[*wsClient]bool
+	broadcast      chan []byte
+	register       chan *wsClient
+	unregister     chan *wsClient
+	graphGen       *engine.Generator
+	store          *nfcontext.Store
+	statusChecker  *llm.StatusChecker
+	mu             sync.RWMutex
 }
 
 // newWSHub creates a new WebSocket hub
@@ -240,16 +241,33 @@ func runServer() error {
 		hub.store = store
 	}
 
-	// Initialize LLM provider (default to Ollama if available, fallback to nil)
-	ollamaCfg := &llm.Config{
+	// Initialize LLM providers
+	var providers []llm.LLMProvider
+
+	ollamaCfg := &llm.ProviderConfig{
 		Type:     llm.ProviderOllama,
 		BaseURL:  "http://localhost:11434",
 		Model:    "llama3",
 		Timeout:  30 * time.Second,
 	}
-	ollamaProv, err := llm.NewProvider(ollamaCfg)
-	if err == nil {
-		hub.graphGen = engine.NewGenerator(ollamaProv, store)
+	if ollamaProv, err := llm.NewProvider(ollamaCfg); err == nil {
+		providers = append(providers, ollamaProv)
+	}
+
+	// TODO: Initialize other providers from config (OpenAI, Anthropic, etc.)
+
+	// Initialize status checker and start background checks
+	if len(providers) > 0 {
+		hub.statusChecker = llm.NewStatusChecker(providers)
+		// Use a detached context — status checks are best-effort and should not block shutdown
+		go hub.statusChecker.CheckAndBroadcast(context.Background(), func(data []byte) {
+			hub.broadcast <- data
+		})
+	}
+
+	// Set graph generator if Ollama is available
+	if len(providers) > 0 {
+		hub.graphGen = engine.NewGenerator(providers[0], store)
 	}
 
 	// WebSocket upgrader
@@ -275,6 +293,15 @@ func runServer() error {
 		// Send initial connection confirmation
 		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"connected"}`))
+
+		// Send provider status if checker is available
+		if client.hub.statusChecker != nil {
+			statusData, err := client.hub.statusChecker.FormatWebSocketMessage(context.Background())
+			if err == nil && statusData != nil {
+				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				conn.WriteMessage(websocket.TextMessage, statusData)
+			}
+		}
 
 		// Start write pump
 		go func() {

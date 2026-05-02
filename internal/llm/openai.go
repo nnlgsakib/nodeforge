@@ -1,88 +1,44 @@
 package llm
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"strings"
 )
 
 type openAIProvider struct {
-	cfg *Config
+	cfg *ProviderConfig
 }
 
-func (p *openAIProvider) Name() string {
-	return "openai"
-}
+func (p *openAIProvider) Name() string { return "openai" }
 
-func (p *openAIProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	payload, err := json.Marshal(map[string]interface{}{
-		"model":    p.cfg.Model,
-		"messages": req.Messages,
-		"temperature": req.Temperature,
-		"max_tokens":  req.MaxTokens,
-		"stream":    req.Stream,
+func (p *openAIProvider) Complete(ctx context.Context, prompt string) (<-chan string, error) {
+	return p.Chat(ctx, []Message{
+		{Role: "user", Content: prompt},
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getBaseURL()+"/chat/completions", strings.NewReader(string(payload)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	if p.cfg.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.cfg.APIKey)
-	}
-
-	client := &http.Client{Timeout: p.cfg.Timeout}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %d %s", resp.StatusCode, string(body))
-	}
-
-	var chatResp ChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &chatResp, nil
 }
 
-func (p *openAIProvider) ChatStream(ctx context.Context, req *ChatRequest) (<-chan string, <-chan error) {
+func (p *openAIProvider) Chat(ctx context.Context, messages []Message) (<-chan string, error) {
 	ch := make(chan string, 10)
-	errCh := make(chan error, 1)
 
 	go func() {
 		defer close(ch)
-		defer close(errCh)
 
-		req.Stream = true
 		payload, err := json.Marshal(map[string]interface{}{
 			"model":       p.cfg.Model,
-			"messages":    req.Messages,
-			"temperature": req.Temperature,
-			"max_tokens":  req.MaxTokens,
+			"messages":    messages,
 			"stream":      true,
+			"temperature":  0.7,
+			"max_tokens":  4096,
 		})
 		if err != nil {
-			errCh <- err
 			return
 		}
 
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getBaseURL()+"/chat/completions", strings.NewReader(string(payload)))
 		if err != nil {
-			errCh <- err
 			return
 		}
 
@@ -94,22 +50,67 @@ func (p *openAIProvider) ChatStream(ctx context.Context, req *ChatRequest) (<-ch
 		client := &http.Client{Timeout: p.cfg.Timeout}
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			errCh <- err
 			return
 		}
 		defer resp.Body.Close()
 
-		// Simplified streaming: read full response (full streaming implementation would parse SSE)
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			errCh <- err
+		// Close body on context cancellation to unblock the read loop
+		go func() {
+			<-ctx.Done()
+			resp.Body.Close()
+		}()
+
+		if resp.StatusCode != http.StatusOK {
 			return
 		}
 
-		ch <- string(body)
+		// Parse SSE stream
+		reader := bufio.NewReader(resp.Body)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+
+			line = strings.TrimSpace(line)
+			if line == "" || !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				return
+			}
+
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				continue
+			}
+
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				select {
+				case ch <- chunk.Choices[0].Delta.Content:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
 	}()
 
-	return ch, errCh
+	return ch, nil
 }
 
 func (p *openAIProvider) getBaseURL() string {

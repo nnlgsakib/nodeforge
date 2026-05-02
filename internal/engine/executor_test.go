@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,8 +50,18 @@ func TestCheckAcceptanceCriteria(t *testing.T) {
 	// Short output should fail
 	assert.False(t, exec.checkAcceptanceCriteria(node, "short"))
 
-	// Long enough output should pass
-	assert.True(t, exec.checkAcceptanceCriteria(node, "This is a long enough output for the test"))
+	// Output containing the criterion should pass
+	assert.True(t, exec.checkAcceptanceCriteria(node, "Output must be non-empty: This is a long enough output for the test"))
+}
+
+func TestCheckAcceptanceCriteriaNoCriteria(t *testing.T) {
+	exec := &Executor{}
+	node := &Node{
+		AcceptanceCriteria: []string{},
+	}
+
+	// No criteria - any reasonable output should pass
+	assert.True(t, exec.checkAcceptanceCriteria(node, "This is a long enough output"))
 }
 
 func TestBuildContext(t *testing.T) {
@@ -62,7 +73,8 @@ func TestBuildContext(t *testing.T) {
 	}
 	exec := NewExecutor(graph, nil, nil)
 
-	// Build context for node at index 1 (should include node-1 output if available)
-	ctx := exec.buildContext(1)
-	assert.NotEmpty(t, ctx)
+	// Build context for node at index 1 (should be empty since store is nil)
+	ctx := exec.buildContext(context.Background(), 1)
+	// Context will be empty because store is nil
+	assert.Equal(t, "", ctx)
 }

@@ -1,18 +1,20 @@
 package engine
 
 import (
+	"context"
 	"testing"
+
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewGenerator(t *testing.T) {
-	gen := NewGenerator(nil)
+	gen := NewGenerator(nil, nil)
 	assert.NotNil(t, gen)
 }
 
 func TestGenerateDefaultGraph(t *testing.T) {
-	gen := NewGenerator(nil)
-	graph, err := gen.Generate(nil, "Convert JS to Go")
+	gen := NewGenerator(nil, nil)
+	graph, err := gen.Generate(context.Background(), "Convert JS to Go")
 	assert.NoError(t, err)
 	assert.NotNil(t, graph)
 	assert.Equal(t, "Convert JS to Go", graph.Goal)

@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -24,53 +25,25 @@ type Message struct {
 	Content string `json:"content"`
 }
 
-// ChatRequest represents a chat completion request
-type ChatRequest struct {
-	Messages    []Message     `json:"messages"`
-	Temperature float64       `json:"temperature,omitempty"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Stream      bool          `json:"stream,omitempty"`
-}
-
-// ChatResponse represents a chat completion response
-type ChatResponse struct {
-	ID      string   `json:"id"`
-	Choices []Choice `json:"choices"`
-	Usage   *Usage   `json:"usage,omitempty"`
-}
-
-// Choice represents a completion choice
-type Choice struct {
-	Index        int     `json:"index"`
-	Message      Message `json:"message"`
-	FinishReason string  `json:"finish_reason"`
-}
-
-// Usage represents token usage
-type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-// Provider defines the interface for LLM providers
-type Provider interface {
-	Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
-	ChatStream(ctx context.Context, req *ChatRequest) (<-chan string, <-chan error)
+// LLMProvider defines the interface for LLM providers (AC #1)
+// Streaming responses via Go channels; error is returned for immediate failures
+type LLMProvider interface {
+	Complete(ctx context.Context, prompt string) (<-chan string, error)
+	Chat(ctx context.Context, messages []Message) (<-chan string, error)
 	Name() string
 }
 
-// Config holds provider configuration
-type Config struct {
-	Type     ProviderType
-	APIKey   string
-	BaseURL  string
-	Model    string
-	Timeout  time.Duration
+// ProviderConfig holds provider configuration (Task 1)
+type ProviderConfig struct {
+	Type    ProviderType
+	APIKey  string
+	BaseURL string
+	Model   string
+	Timeout time.Duration
 }
 
 // NewProvider creates a new LLM provider based on config
-func NewProvider(cfg *Config) (Provider, error) {
+func NewProvider(cfg *ProviderConfig) (LLMProvider, error) {
 	switch cfg.Type {
 	case ProviderOpenAI:
 		return &openAIProvider{cfg: cfg}, nil
@@ -87,20 +60,21 @@ func NewProvider(cfg *Config) (Provider, error) {
 	}
 }
 
-// RaceResult holds the result of a race between providers
+// RaceResult holds the result of a race between providers (Task 3)
 type RaceResult struct {
 	ProviderName string
-	Response     *ChatResponse
+	FirstToken   string
 	Duration     time.Duration
 }
 
-// Race executes multiple providers and returns the fastest response
-func Race(ctx context.Context, providers []Provider, req *ChatRequest) (*RaceResult, error) {
+// Race executes multiple providers and returns the fastest first token (Task 3)
+// Losers are cancelled via context cancellation
+func Race(ctx context.Context, providers []LLMProvider, prompt string) (*RaceResult, error) {
 	type result struct {
-		resp     *ChatResponse
-		duration time.Duration
-		err      error
-		name     string
+		firstToken string
+		duration   time.Duration
+		err        error
+		name       string
 	}
 
 	results := make(chan result, len(providers))
@@ -110,22 +84,36 @@ func Race(ctx context.Context, providers []Provider, req *ChatRequest) (*RaceRes
 	var wg sync.WaitGroup
 	for _, p := range providers {
 		wg.Add(1)
-		go func(prov Provider) {
+		go func(prov LLMProvider) {
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					if r != nil {
-						results <- result{err: fmt.Errorf("provider %s panicked: %v", prov.Name(), r)}
-					}
+					results <- result{err: fmt.Errorf("provider %s panicked: %v", prov.Name(), r)}
 				}
 			}()
+
 			start := time.Now()
-			resp, err := prov.Chat(ctx, req)
-			dur := time.Since(start)
-			if ctx.Err() != nil {
+			ch, err := prov.Complete(ctx, prompt)
+			if err != nil {
+				results <- result{err: fmt.Errorf("provider %s failed to start: %w", prov.Name(), err)}
 				return
 			}
-			results <- result{resp: resp, duration: dur, err: err, name: prov.Name()}
+			if ch == nil {
+				results <- result{err: fmt.Errorf("provider %s returned nil channel", prov.Name())}
+				return
+			}
+
+			select {
+			case token, ok := <-ch:
+				if !ok {
+					results <- result{err: fmt.Errorf("provider %s sent no tokens", prov.Name())}
+					return
+				}
+				dur := time.Since(start)
+				results <- result{firstToken: token, duration: dur, name: prov.Name()}
+			case <-ctx.Done():
+				return
+			}
 		}(p)
 	}
 
@@ -146,12 +134,84 @@ func Race(ctx context.Context, providers []Provider, req *ChatRequest) (*RaceRes
 				cancel() // cancel remaining requests
 				return &RaceResult{
 					ProviderName: r.name,
-					Response:     r.resp,
-					Duration:     r.duration,
+					FirstToken:  r.firstToken,
+					Duration:    r.duration,
 				}, nil
 			}
 		case <-ctx.Done():
 			return nil, fmt.Errorf("race cancelled: %w", ctx.Err())
+		}
+	}
+}
+
+// RaceSimple is a simpler race that returns the fastest full response (Task 3)
+// Unlike Race, this collects the complete response via Chat streaming.
+func RaceSimple(ctx context.Context, providers []LLMProvider, messages []Message) (string, error) {
+	if len(providers) == 0 {
+		return "", fmt.Errorf("no providers available")
+	}
+
+	type result struct {
+		output string
+		err    error
+		name   string
+	}
+
+	results := make(chan result, len(providers))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for _, p := range providers {
+		wg.Add(1)
+		go func(prov LLMProvider) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					results <- result{err: fmt.Errorf("provider %s panicked: %v", prov.Name(), r)}
+				}
+			}()
+
+			ch, err := prov.Chat(ctx, messages)
+			if err != nil {
+				results <- result{err: fmt.Errorf("provider %s failed to start: %w", prov.Name(), err)}
+				return
+			}
+			if ch == nil {
+				results <- result{err: fmt.Errorf("provider %s returned nil channel", prov.Name())}
+				return
+			}
+
+			var sb strings.Builder
+			for token := range ch {
+				sb.WriteString(token)
+			}
+
+			if sb.Len() == 0 {
+				results <- result{err: fmt.Errorf("provider %s sent no tokens", prov.Name())}
+				return
+			}
+			results <- result{output: sb.String(), name: prov.Name()}
+		}(p)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for {
+		select {
+		case r, ok := <-results:
+			if !ok {
+				return "", fmt.Errorf("all providers failed")
+			}
+			if r.err == nil {
+				cancel()
+				return r.output, nil
+			}
+		case <-ctx.Done():
+			return "", fmt.Errorf("race cancelled: %w", ctx.Err())
 		}
 	}
 }

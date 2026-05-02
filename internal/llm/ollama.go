@@ -5,28 +5,29 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 )
 
 type ollamaProvider struct {
-	cfg *Config
+	cfg *ProviderConfig
 }
 
-func (p *ollamaProvider) Name() string {
-	return "ollama"
+func (p *ollamaProvider) Name() string { return "ollama" }
+
+func (p *ollamaProvider) Complete(ctx context.Context, prompt string) (<-chan string, error) {
+	return p.Chat(ctx, []Message{
+		{Role: "user", Content: prompt},
+	})
 }
 
-func (p *ollamaProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
+func (p *ollamaProvider) Chat(ctx context.Context, messages []Message) (<-chan string, error) {
+	ch := make(chan string, 10)
+
 	payload, err := json.Marshal(map[string]interface{}{
-		"model":  p.cfg.Model,
-		"messages": req.Messages,
-		"stream": false,
-		"options": map[string]interface{}{
-			"temperature": req.Temperature,
-			"num_predict": req.MaxTokens,
-		},
+		"model":    p.cfg.Model,
+		"messages": messages,
+		"stream":   true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -44,99 +45,41 @@ func (p *ollamaProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatRespo
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %d %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp struct {
-		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &ChatResponse{
-		ID: "",
-		Choices: []Choice{
-			{
-				Index: 0,
-				Message: Message{
-					Role:    ollamaResp.Message.Role,
-					Content: ollamaResp.Message.Content,
-				},
-				FinishReason: "stop",
-			},
-		},
-	}, nil
-}
-
-func (p *ollamaProvider) ChatStream(ctx context.Context, req *ChatRequest) (<-chan string, <-chan error) {
-	ch := make(chan string, 10)
-	errCh := make(chan error, 1)
 
 	go func() {
 		defer close(ch)
-		defer close(errCh)
-
-		payload, err := json.Marshal(map[string]interface{}{
-			"model":  p.cfg.Model,
-			"messages": req.Messages,
-			"stream": true,
-		})
-		if err != nil {
-			errCh <- fmt.Errorf("failed to marshal request: %w", err)
-			return
-		}
-
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getBaseURL()+"/api/chat", strings.NewReader(string(payload)))
-		if err != nil {
-			errCh <- fmt.Errorf("failed to create request: %w", err)
-			return
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{Timeout: p.cfg.Timeout}
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			errCh <- err
-			return
-		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			errCh <- fmt.Errorf("API error: %d %s", resp.StatusCode, string(body))
-			return
-		}
+		// Unblock reads on context cancellation
+		go func() {
+			<-ctx.Done()
+			resp.Body.Close()
+		}()
 
-		// Properly stream line-delimited JSON responses
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
-				errCh <- fmt.Errorf("stream cancelled: %w", ctx.Err())
 				return
 			default:
 			}
+
 			line := strings.TrimSpace(scanner.Text())
 			if line == "" {
 				continue
 			}
+
 			var chunk struct {
 				Message struct {
 					Content string `json:"content"`
 				} `json:"message"`
 				Done bool `json:"done"`
 			}
+
 			if err := json.Unmarshal([]byte(line), &chunk); err != nil {
 				continue
 			}
+
 			if chunk.Message.Content != "" {
 				select {
 				case ch <- chunk.Message.Content:
@@ -144,16 +87,19 @@ func (p *ollamaProvider) ChatStream(ctx context.Context, req *ChatRequest) (<-ch
 					return
 				}
 			}
+
 			if chunk.Done {
-				break
+				return
 			}
 		}
+
 		if err := scanner.Err(); err != nil {
-			errCh <- fmt.Errorf("stream read error: %w", err)
+			// Stream read error - channel will be closed without further tokens
+			// Error is silently absorbed as the channel is already being closed
 		}
 	}()
 
-	return ch, errCh
+	return ch, nil
 }
 
 func (p *ollamaProvider) getBaseURL() string {

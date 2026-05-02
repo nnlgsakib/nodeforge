@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/nnlgsakib/nodeforge/internal/llm"
@@ -67,12 +68,12 @@ type Graph struct {
 
 // Generator creates graphs from goals
 type Generator struct {
-	llmProvider llm.Provider
+	llmProvider llm.LLMProvider
 	store        *nfContext.Store
 }
 
 // NewGenerator creates a new graph generator
-func NewGenerator(provider llm.Provider, store *nfContext.Store) *Generator {
+func NewGenerator(provider llm.LLMProvider, store *nfContext.Store) *Generator {
 	return &Generator{llmProvider: provider, store: store}
 }
 
@@ -105,15 +106,6 @@ Output JSON format:
   ]
 }`, goal)
 
-	req := &llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: "system", Content: "You are a graph generation assistant. Output only valid JSON."},
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0.3,
-		MaxTokens:   2000,
-	}
-
 	if g.llmProvider == nil {
 		// Fallback: generate default graph without LLM
 		log.Println("[WARN] LLM provider is nil, falling back to default graph")
@@ -122,7 +114,12 @@ Output JSON format:
 		return graph, nil
 	}
 
-	resp, err := g.llmProvider.Chat(ctx, req)
+	messages := []llm.Message{
+		{Role: "system", Content: "You are a graph generation assistant. Output only valid JSON."},
+		{Role: "user", Content: prompt},
+	}
+
+	ch, err := g.llmProvider.Chat(ctx, messages)
 	if err != nil {
 		// Fallback to default graph on LLM failure
 		log.Printf("[WARN] LLM chat failed: %v, falling back to default graph", err)
@@ -131,8 +128,15 @@ Output JSON format:
 		return graph, nil
 	}
 
-	if len(resp.Choices) == 0 {
-		log.Println("[WARN] LLM returned empty choices, falling back to default graph")
+	// Collect streamed response
+	var respBuilder strings.Builder
+	for token := range ch {
+		respBuilder.WriteString(token)
+	}
+
+	resp := respBuilder.String()
+	if resp == "" {
+		log.Println("[WARN] LLM returned empty response, falling back to default graph")
 		graph := g.generateDefaultGraph(goal)
 		g.saveGraph(ctx, graph)
 		return graph, nil
@@ -147,7 +151,7 @@ Output JSON format:
 		} `json:"nodes"`
 	}
 
-	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &llmOutput); err != nil {
+	if err := json.Unmarshal([]byte(resp), &llmOutput); err != nil {
 		log.Printf("[WARN] Failed to parse LLM response: %v, falling back to default graph", err)
 		graph := g.generateDefaultGraph(goal)
 		g.saveGraph(ctx, graph)

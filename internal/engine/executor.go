@@ -21,13 +21,13 @@ type NodeUpdateBroadcaster interface {
 // Executor runs nodes sequentially with retry until acceptance criteria are met
 type Executor struct {
 	graph     *Graph
-	llmProv   llm.Provider
+	llmProv   llm.LLMProvider
 	store     *nfContext.Store
 	hub       NodeUpdateBroadcaster // WebSocket hub for real-time updates
 }
 
 // NewExecutor creates a new executor for the given graph
-func NewExecutor(graph *Graph, llmProv llm.Provider, store *nfContext.Store) *Executor {
+func NewExecutor(graph *Graph, llmProv llm.LLMProvider, store *nfContext.Store) *Executor {
 	return &Executor{
 		graph:   graph,
 		llmProv: llmProv,
@@ -125,24 +125,15 @@ Acceptance Criteria:
 Provide the output.`, node.Type, node.Label, contextStr, node.AcceptanceCriteria)
 
 	// Stream LLM response and collect output
-	type result struct {
-		output string
-		err    error
+	messages := []llm.Message{
+		{Role: "system", Content: "You are a node executor. Execute the node and provide output."},
+		{Role: "user", Content: prompt},
 	}
 
-	ch, errCh := e.llmProv.ChatStream(ctx, &llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: "system", Content: "You are a node executor. Execute the node and provide output."},
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0.3,
-		MaxTokens:  2000,
-		Stream:      true,
-	})
-
-	if ch == nil && errCh == nil {
-		// Fallback to non-streaming
-		return e.executeNodeFallback(ctx, prompt)
+	ch, err := e.llmProv.Chat(ctx, messages)
+	if err != nil {
+		// Fallback to simulated output on error
+		return "", fmt.Errorf("LLM chat failed: %w", err)
 	}
 
 	var output strings.Builder
@@ -150,15 +141,6 @@ Provide the output.`, node.Type, node.Label, contextStr, node.AcceptanceCriteria
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case err, ok := <-errCh:
-			if !ok {
-				// Channel closed, check if we have output
-				if output.Len() > 0 {
-					return output.String(), nil
-				}
-				return "", fmt.Errorf("no response from LLM")
-			}
-			return "", err
 		case token, ok := <-ch:
 			if !ok {
 				if output.Len() > 0 {
@@ -171,29 +153,6 @@ Provide the output.`, node.Type, node.Label, contextStr, node.AcceptanceCriteria
 			e.streamLLMResponse(ctx, token)
 		}
 	}
-}
-
-// executeNodeFallback is the non-streaming fallback
-func (e *Executor) executeNodeFallback(ctx context.Context, prompt string) (string, error) {
-	req := &llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: "system", Content: "You are a node executor. Execute the node and provide output."},
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0.3,
-		MaxTokens:  2000,
-	}
-
-	resp, err := e.llmProv.Chat(ctx, req)
-	if err != nil {
-		return "", err
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response from LLM")
-	}
-
-	return resp.Choices[0].Message.Content, nil
 }
 
 // buildContext builds context string from upstream node outputs (FR18)
@@ -269,51 +228,16 @@ func lower(b byte) byte {
 	return b
 }
 
-// streamLLMResponse streams LLM output via WebSocket hub
-func (e *Executor) streamLLMResponse(ctx context.Context, prompt string) {
-	if e.llmProv == nil || e.hub == nil {
+// streamLLMResponse broadcasts LLM token via WebSocket hub
+func (e *Executor) streamLLMResponse(ctx context.Context, token string) {
+	if e.hub == nil || token == "" {
 		return
 	}
-
-	req := &llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: "system", Content: "You are a node executor. Execute the node and provide output."},
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0.3,
-		MaxTokens:  2000,
-		Stream:      true,
-	}
-
-	ch, errCh := e.llmProv.ChatStream(ctx, req)
-	if ch == nil && errCh == nil {
-		return
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case err, ok := <-errCh:
-			if !ok {
-				return
-			}
-			// Log error but continue
-			_ = err
-			return
-		case token, ok := <-ch:
-			if !ok {
-				return
-			}
-			if e.hub != nil {
-				data, _ := json.Marshal(map[string]interface{}{
-					"type": "llm_chunk",
-					"text": token,
-				})
-				e.hub.BroadcastRaw(data)
-			}
-		}
-	}
+	data, _ := json.Marshal(map[string]interface{}{
+		"type": "llm_chunk",
+		"text": token,
+	})
+	e.hub.BroadcastRaw(data)
 }
 
 // updateNodeStatus updates node status and broadcasts via WebSocket (Task 5.4)
