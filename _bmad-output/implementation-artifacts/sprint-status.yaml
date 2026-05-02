@@ -56,7 +56,7 @@ development_status:
 
       # Epic 2: Graph Execution Engine & LLM Integration
       epic-2: in-progress
-      2-1-chat-interface-and-auto-generated-node-graph: review
+      2-1-chat-interface-and-auto-generated-node-graph: done
       2-2-llm-provider-abstraction-and-race-mode: ready-for-dev
       2-3-llm-inner-monologue-panel: ready-for-dev
       2-4-prompt-optimization-and-token-budget: ready-for-dev
