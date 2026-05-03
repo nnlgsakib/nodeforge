@@ -20,3 +20,10 @@
 
 - Missing REST API endpoint for budget status reporting (AC4) — WebSocket implemented but REST API for BudgetStatus() not implemented, separate concern from story scope
 - Context cancellation ignored in budget and optimizer methods — methods accept context.Context but never check for cancellation, long-running operations won't abort, not critical for initial implementation
+
+## Deferred from: code review of story-3.3-canvascontrols-and-sessionexplorer (2026-05-03)
+
+- `statusColors` uses hardcoded hex instead of CSS variables — inconsistent with design system but not a bug [`SessionExplorer.tsx:22-27`]
+- Web Worker never terminated on unmount — pre-existing issue in `useLayoutWorker.ts`
+- `useKeyboardShortcuts` global 'p' key conflicts with CanvasControls Ctrl+p — pre-existing, not introduced by this diff
+- Notification timeout not cleared on unmount — pre-existing pattern in App.tsx

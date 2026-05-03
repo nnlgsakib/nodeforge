@@ -19,6 +19,7 @@ import { ChatPanel } from './components/panels/ChatPanel';
 import { MonologuePanel } from './components/panels/monologue-panel';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { PhaseBands } from './components/canvas/PhaseBands';
+import { NodeConfig } from './components/panels/node-config';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLayoutWorker } from './hooks/useLayoutWorker';
@@ -68,6 +69,9 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [nodeConfigOpen, setNodeConfigOpen] = useState(false);
+  const [nodeConfigNodeId, setNodeConfigNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // WebSocket connection
   const {
@@ -239,6 +243,41 @@ export default function App() {
     [connected, sendMessage]
   );
 
+  // Node configuration handlers
+  const handleNodeDoubleClick = useCallback((nodeId: string) => {
+    setNodeConfigNodeId(nodeId);
+    setNodeConfigOpen(true);
+  }, []);
+
+  // Open NodeConfig with Enter key on selected node
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      if (e.key === 'Enter' && selectedNodeId) {
+        e.preventDefault();
+        setNodeConfigNodeId(selectedNodeId);
+        setNodeConfigOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNodeId]);
+
+  const handleNodeConfigSave = useCallback((nodeId: string, config: { timeout: number; retryCount: number; tokenBudget: number }) => {
+    // Send config via WebSocket message
+    sendMessage({
+      type: 'node_update',
+      nodeId,
+      config,
+    });
+    setNodeConfigOpen(false);
+    setNotification({ type: 'success', message: `Node configuration saved` });
+    setTimeout(() => setNotification(null), 3000);
+  }, [sendMessage]);
+
   // Drag-and-drop file to node creation (AC4)
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -361,9 +400,11 @@ export default function App() {
           edgeTypes={edgeTypes}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node.id)}
           nodesDraggable={true}
           nodesConnectable={true}
           proOptions={{ hideAttribution: true }}
@@ -388,6 +429,13 @@ export default function App() {
         isStreaming={isStreaming}
         onClear={clearMonologueMessages}
         sessionId={sessionId}
+      />
+
+      <NodeConfig
+        open={nodeConfigOpen}
+        onOpenChange={setNodeConfigOpen}
+        nodeId={nodeConfigNodeId}
+        onSave={handleNodeConfigSave}
       />
     </div>
   );
