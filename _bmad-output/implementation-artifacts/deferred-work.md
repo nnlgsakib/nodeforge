@@ -9,3 +9,8 @@
 ## Deferred from: code review of 2-2-llm-provider-abstraction-and-race-mode (2026-05-02)
 
 - WebSocket hub `run()` loop has no stop mechanism [serve.go:61-91,232] — pre-existing issue not caused by this story, would require shutdown signal handling in hub
+
+## Deferred from: code review of 2-4-prompt-optimization-and-token-budget (2026-05-03)
+
+- Missing REST API endpoint for budget status reporting (AC4) — WebSocket implemented but REST API for BudgetStatus() not implemented, separate concern from story scope
+- Context cancellation ignored in budget and optimizer methods — methods accept context.Context but never check for cancellation, long-running operations won't abort, not critical for initial implementation

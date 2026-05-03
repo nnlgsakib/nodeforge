@@ -11,13 +11,15 @@ import (
 )
 
 var supportedKeys = map[string]bool{
-	"llm.openai-key":      true,
-	"llm.anthropic-key":   true,
-	"llm.deepseek-key":    true,
-	"llm.openrouter-key":  true,
-	"llm.ollama-url":      true,
-	"server.port":          true,
-	"llm.default-model":   true,
+	"llm.openai-key":             true,
+	"llm.anthropic-key":          true,
+	"llm.deepseek-key":           true,
+	"llm.openrouter-key":         true,
+	"llm.ollama-url":             true,
+	"server.port":                 true,
+	"llm.default-model":          true,
+	"llm.token-budget":           true,
+	"llm.token-budget-per-request": true,
 }
 
 var configCmd = &cobra.Command{

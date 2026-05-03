@@ -147,7 +147,7 @@ func Race(ctx context.Context, providers []LLMProvider, prompt string) (*RaceRes
 // RaceSimple is a simpler race that returns the fastest full response (Task 3)
 // Unlike Race, this collects the complete response via Chat streaming.
 func RaceSimple(ctx context.Context, providers []LLMProvider, messages []Message) (string, error) {
-	if len(providers) == 0 {
+	if len(providers) ==0 {
 		return "", fmt.Errorf("no providers available")
 	}
 
@@ -187,7 +187,7 @@ func RaceSimple(ctx context.Context, providers []LLMProvider, messages []Message
 				sb.WriteString(token)
 			}
 
-			if sb.Len() == 0 {
+			if sb.Len() ==0 {
 				results <- result{err: fmt.Errorf("provider %s sent no tokens", prov.Name())}
 				return
 			}
@@ -214,4 +214,148 @@ func RaceSimple(ctx context.Context, providers []LLMProvider, messages []Message
 			return "", fmt.Errorf("race cancelled: %w", ctx.Err())
 		}
 	}
+}
+
+// BudgetUpdateBroadcaster abstracts WebSocket budget update emissions
+type BudgetUpdateBroadcaster interface {
+	BroadcastBudgetUpdate(budgetRemaining int, budgetTotal int, lastRequestTokens int)
+}
+
+// budgetedProvider wraps an LLMProvider with budget enforcement and prompt optimization
+type budgetedProvider struct {
+	provider    LLMProvider
+	budget     *BudgetEnforcer
+	optimizer  *PromptOptimizer
+	nodeType   string
+	broadcaster BudgetUpdateBroadcaster
+}
+
+// NewBudgetedProvider wraps an LLMProvider with budget and optimization logic
+func NewBudgetedProvider(
+	provider LLMProvider,
+	budget *BudgetEnforcer,
+	optimizer *PromptOptimizer,
+	broadcaster BudgetUpdateBroadcaster,
+) LLMProvider {
+	if provider == nil {
+		panic("NewBudgetedProvider: provider must not be nil")
+	}
+	return &budgetedProvider{
+		provider:    provider,
+		budget:     budget,
+		optimizer:  optimizer,
+		nodeType:   "",
+		broadcaster: broadcaster,
+	}
+}
+
+// SetNodeType sets the node type for prompt optimization (call before Complete/Chat)
+func (bp *budgetedProvider) SetNodeType(nodeType string) {
+	bp.nodeType = nodeType
+}
+
+// buildPromptForBudget estimates tokens for the full prompt content
+func buildPromptForBudget(prompt string, messages []Message) string {
+	if len(messages) >0 {
+		var sb strings.Builder
+		for _, msg := range messages {
+			sb.WriteString(msg.Content)
+			sb.WriteString(" ")
+		}
+		return sb.String()
+	}
+	return prompt
+}
+
+// Complete implements LLMProvider with budget check and prompt optimization
+func (bp *budgetedProvider) Complete(ctx context.Context, prompt string) (<-chan string, error) {
+	// Optimize prompt if optimizer is available
+	optimizedPrompt := prompt
+	if bp.optimizer != nil {
+		optimizedPrompt = bp.optimizer.OptimizePrompt(ctx, prompt, bp.nodeType)
+	}
+	if optimizedPrompt == "" {
+		optimizedPrompt = prompt // fallback to original if optimization returns empty
+	}
+
+	// Check budget and track usage atomically
+	if bp.budget != nil {
+		estimated := EstimateTokens(optimizedPrompt)
+		if err := bp.budget.CheckAndTrack(ctx, estimated); err != nil {
+			return nil, fmt.Errorf("budget check failed: %w", err)
+		}
+		if bp.broadcaster != nil {
+			_, remaining, total := bp.budget.BudgetStatus()
+			bp.broadcaster.BroadcastBudgetUpdate(remaining, total, estimated)
+		}
+	}
+
+	// Call underlying provider with optimized prompt
+	ch, err := bp.provider.Complete(ctx, optimizedPrompt)
+	if err != nil {
+		return nil, err
+	}
+	// Wrap channel to track actual token usage after streaming completes
+	return bp.wrapChannel(ch), nil
+}
+
+// Chat implements LLMProvider with budget check and prompt optimization
+func (bp *budgetedProvider) Chat(ctx context.Context, messages []Message) (<-chan string, error) {
+	if len(messages) ==0 {
+		return nil, fmt.Errorf("messages must not be nil or empty")
+	}
+
+	// Build full prompt from messages for budget estimation
+	fullPrompt := buildPromptForBudget("", messages)
+
+	// Optimize the last user message
+	optimizedPrompt := fullPrompt
+	if bp.optimizer != nil && len(messages) >0 {
+		lastMsg := messages[len(messages)-1]
+		optimized := bp.optimizer.OptimizePrompt(ctx, lastMsg.Content, bp.nodeType)
+		messages[len(messages)-1].Content = optimized
+		optimizedPrompt = buildPromptForBudget("", messages)
+	}
+
+	// Check budget and track usage atomically
+	if bp.budget != nil {
+		estimated := EstimateTokens(optimizedPrompt)
+		if err := bp.budget.CheckAndTrack(ctx, estimated); err != nil {
+			return nil, fmt.Errorf("budget check failed: %w", err)
+		}
+		if bp.broadcaster != nil {
+			_, remaining, total := bp.budget.BudgetStatus()
+			bp.broadcaster.BroadcastBudgetUpdate(remaining, total, estimated)
+		}
+	}
+
+	// Call underlying provider with optimized messages
+	ch, err := bp.provider.Chat(ctx, messages)
+	if err != nil {
+		return nil, err
+	}
+	// Wrap channel to track actual token usage after streaming completes
+	return bp.wrapChannel(ch), nil
+}
+
+// wrapChannel wraps the LLM response channel to track actual token usage after streaming
+func (bp *budgetedProvider) wrapChannel(ch <-chan string) <-chan string {
+	out := make(chan string, 1)
+	go func() {
+		defer close(out)
+		var totalTokens int
+		for token := range ch {
+			totalTokens += EstimateTokens(token)
+			out <- token
+		}
+		if bp.budget != nil {
+			bp.budget.TrackUsage(totalTokens)
+		}
+	}()
+	return out
+}
+
+// Name returns the underlying provider's name
+func (bp *budgetedProvider) Name() string {
+	return bp.provider.Name()
 }
