@@ -19,6 +19,7 @@ import { MonologuePanel } from './components/panels/monologue-panel';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useLayoutWorker } from './hooks/useLayoutWorker';
 
 interface ProjectResult {
   sessionId: string;
@@ -76,21 +77,69 @@ export default function App() {
     clearMonologueMessages,
   } = useWebSocket();
 
-  // Handle graph_update messages (Task 2.4, AC1)
+  // Web Worker layout offloading (Story 2.7)
+  const { runLayout } = useLayoutWorker();
+
+  // Offload layout to Web Worker when graph updates arrive (Story 2.7, AC2-3)
   useEffect(() => {
     if (graphUpdateQueue.length === 0) return;
+
+    // Collect the last update that contains nodes or edges
+    let lastNodes: Array<{ id: string; [key: string]: unknown }> | null = null;
+    let lastEdges: Array<{ source: string; target: string; [key: string]: unknown }> | null = null;
+
     for (const item of graphUpdateQueue) {
       const data = item as { nodes?: unknown[]; edges?: unknown[] };
-      if (data.nodes) {
-        setNodes(data.nodes as any[]);
+      if (data.nodes && data.nodes.length > 0) {
+        lastNodes = data.nodes as Array<{ id: string }>;
       }
-      if (data.edges) {
-        setEdges(data.edges as any[]);
+      if (data.edges && data.edges.length > 0) {
+        lastEdges = data.edges as Array<{ source: string; target: string }>;
       }
+    }
+
+    if (!lastNodes && !lastEdges) {
+      clearGraphUpdates();
+      return;
+    }
+
+    // If we have nodes, run layout; otherwise just update edges
+    if (lastNodes) {
+      runLayout(lastNodes, lastEdges || [])
+        .then((positions) => {
+          requestAnimationFrame(() => {
+            // Replace nodes entirely (preserving positions from layout)
+            setNodes(
+              lastNodes!.map((node) => ({
+                ...node,
+                position: positions[node.id] || node.position || { x: 0, y: 0 },
+              })) as any[]
+            );
+            if (lastEdges && lastEdges.length > 0) {
+              setEdges(lastEdges as any[]);
+            }
+            setChatGenerating(false);
+          });
+        })
+        .catch((err) => {
+          console.warn('Layout worker failed, falling back to no-layout:', err);
+          // Fallback: set nodes and edges directly without layout
+          requestAnimationFrame(() => {
+            setNodes(lastNodes! as any[]);
+            if (lastEdges && lastEdges.length > 0) {
+              setEdges(lastEdges as any[]);
+            }
+            setChatGenerating(false);
+          });
+        });
+    } else if (lastEdges) {
+      // Edge-only update
+      setEdges(lastEdges as any[]);
       setChatGenerating(false);
     }
+
     clearGraphUpdates();
-  }, [graphUpdateQueue, setNodes, setEdges, clearGraphUpdates]);
+  }, [graphUpdateQueue, runLayout, clearGraphUpdates]);
 
   // Handle node_update messages (Task 5.4, AC2)
   useEffect(() => {

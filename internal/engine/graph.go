@@ -56,14 +56,21 @@ type Edge struct {
 	Tension float64 `json:"tension,omitempty"`
 }
 
+// GraphMetadata stores metadata about a graph execution (Story 2.7)
+type GraphMetadata struct {
+	MerkleRoot string            `json:"merkleRoot"`
+	NodeHashes map[string]string `json:"nodeHashes"` // Per-node hashes for change detection
+}
+
 // Graph represents a node graph
 type Graph struct {
-	ID        string  `json:"id"`
-	Goal      string  `json:"goal"`
-	Nodes     []*Node `json:"nodes"`
-	Edges     []*Edge `json:"edges"`
-	Status    string  `json:"status"`
-	CreatedAt string  `json:"createdAt"`
+	ID        string         `json:"id"`
+	Goal      string         `json:"goal"`
+	Nodes     []*Node        `json:"nodes"`
+	Edges     []*Edge        `json:"edges"`
+	Status    string         `json:"status"`
+	CreatedAt string         `json:"createdAt"`
+	Metadata  *GraphMetadata `json:"metadata,omitempty"` // Story 2.7: Merkle tree metadata
 }
 
 // Generator creates graphs from goals

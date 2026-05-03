@@ -57,15 +57,65 @@ func (e *Executor) SetSwarm(swarm *llm.Swarm, config *llm.SwarmConfig) {
 	}
 }
 
+// resolveChangedNodes uses Merkle tree hashing to determine which nodes need re-execution.
+// Returns a set of node IDs that have changed since the last execution.
+func (e *Executor) resolveChangedNodes() (map[string]bool, error) {
+	if e.graph == nil {
+		return nil, fmt.Errorf("graph is nil")
+	}
+	changed := make(map[string]bool)
+
+	var oldHash string
+	var oldNodeHashes map[string]string
+	if e.graph.Metadata != nil {
+		oldHash = e.graph.Metadata.MerkleRoot
+		oldNodeHashes = e.graph.Metadata.NodeHashes
+	}
+
+	ids, err := detectChangedNodes(oldHash, oldNodeHashes, e.graph.Nodes, e.graph.Edges)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		changed[id] = true
+	}
+
+	// Update the graph metadata with the new hash after computing
+	if e.graph.Metadata == nil {
+		e.graph.Metadata = &GraphMetadata{
+			NodeHashes: make(map[string]string),
+		}
+	}
+	newRoot := computeGraphHash(e.graph.Nodes, e.graph.Edges)
+	e.graph.Metadata.MerkleRoot = newRoot
+	for _, node := range e.graph.Nodes {
+		e.graph.Metadata.NodeHashes[node.ID] = hashNode(node)
+	}
+
+	return changed, nil
+}
+
 // Run executes the graph sequentially, node by node
 // Each node runs until its acceptance criteria are met (FR3)
 // Forward-only progress: graph state is source of truth (FR1, FR52)
+// Story 2.7: Uses Merkle tree hashing to skip unchanged nodes during re-execution.
 func (e *Executor) Run(ctx context.Context) error {
+	// Story 2.7: Detect changed nodes using Merkle tree
+	changedNodes, err := e.resolveChangedNodes()
+	if err != nil {
+		return fmt.Errorf("merkle change detection failed: %w", err)
+	}
+
 	for i := range e.graph.Nodes {
 		node := e.graph.Nodes[i]
 
-		// Skip non-pending nodes (idempotent)
-		if node.Status != NodeStatusPending && node.Status != NodeStatusFailed {
+		// Story 2.7: Skip unchanged nodes that are already complete
+		if !changedNodes[node.ID] && node.Status == NodeStatusComplete {
+			continue
+		}
+
+		// Skip non-pending/non-failed nodes (idempotent), unless the node changed
+		if !changedNodes[node.ID] && node.Status != NodeStatusPending && node.Status != NodeStatusFailed {
 			continue
 		}
 

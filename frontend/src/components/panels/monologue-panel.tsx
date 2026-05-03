@@ -3,16 +3,6 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { exportMonologueAsMarkdown } from '../../utils/monologue-export';
 import type { MonologueMessage } from '../../hooks/useWebSocket';
 
-async function fetchMonologueHistory(sessionId: string): Promise<MonologueMessage[]> {
-  try {
-    const res = await fetch(`/api/v1/sessions/${sessionId}/monologue`);
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
-  }
-}
-
 interface MonologuePanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;

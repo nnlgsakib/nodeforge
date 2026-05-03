@@ -45,6 +45,7 @@ type wsHub struct {
 	store          *nfcontext.Store
 	statusChecker  *llm.StatusChecker
 	mu             sync.RWMutex
+	clientCount    atomic.Int64 // Story 2.7: Track active connections for monitoring
 }
 
 // newWSHub creates a new WebSocket hub
@@ -63,14 +64,18 @@ func (h *wsHub) run() {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
-			h.clients[client] = true
+			if !h.clients[client] {
+				h.clients[client] = true
+				h.clientCount.Add(1)
+			}
 			h.mu.Unlock()
 
 		case client := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
+			if h.clients[client] {
 				delete(h.clients, client)
 				close(client.send)
+				h.clientCount.Add(-1)
 			}
 			h.mu.Unlock()
 
@@ -135,6 +140,11 @@ func (h *wsHub) BroadcastRaw(data []byte) {
 		return
 	}
 	h.broadcast <- data
+}
+
+// ClientCount returns the number of active WebSocket connections (Story 2.7)
+func (h *wsHub) ClientCount() int64 {
+	return h.clientCount.Load()
 }
 
 var (
@@ -419,7 +429,7 @@ func runServer() error {
 
 	// Metrics endpoint (Prometheus placeholder)
 	r.GET("/metrics", func(c *gin.Context) {
-		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\n")
+		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\nws_connections_total %d\n", hub.ClientCount())
 	})
 
 	// Get monologue history for a session
