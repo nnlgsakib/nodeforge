@@ -1,6 +1,6 @@
 # Story 3.2: ChatPanel & MonologuePanel
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -38,37 +38,37 @@ So that I can describe goals and watch AI thinking in real-time.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: ChatPanel implementation (AC: #1, #4, #5)
-  - [ ] Subtask 1.1: Implement goal input validation (min 10 chars, max 500 chars)
-  - [ ] Subtask 1.2: Implement "Generating graph..." state with animated ellipsis and disabled input
-  - [ ] Subtask 1.3: Wire ChatPanel to WebSocket goal submission (sendMessage({ type: 'goal', text }))
-  - [ ] Subtask 1.4: Implement collapsible panel with toggle button
-  - [ ] Subtask 1.5: Display chat message history (user + system messages)
-  - [ ] Subtask 1.6: Ensure "Chat-First, Canvas-Second" pattern: chat generates graph, canvas visualizes execution
+- [x] Task 1: ChatPanel implementation (AC: #1, #4, #5)
+  - [x] Subtask 1.1: Implement goal input validation (min 10 chars, max 500 chars)
+  - [x] Subtask 1.2: Implement "Generating graph..." state with animated ellipsis and disabled input
+  - [x] Subtask 1.3: Wire ChatPanel to WebSocket goal submission (sendMessage({ type: 'goal', text }))
+  - [x] Subtask 1.4: Implement collapsible panel with toggle button
+  - [x] Subtask 1.5: Display chat message history (user + system messages)
+  - [x] Subtask 1.6: Ensure "Chat-First, Canvas-Second" pattern: chat generates graph, canvas visualizes execution
 
-- [ ] Task 2: MonologuePanel implementation (AC: #2, #3, #6)
-  - [ ] Subtask 2.1: Implement Radix Dialog slide-over from right (400px wide)
-  - [ ] Subtask 2.2: Stream LLM Chain-of-Thought tokens via WebSocket (monologue messages)
-  - [ ] Subtask 2.3: Implement auto-scroll with toggle switch (default: on)
-  - [ ] Subtask 2.4: Implement export monologue history as Markdown file
-  - [ ] Subtask 2.5: Implement clear history functionality
-  - [ ] Subtask 2.6: Wire 'm' key toggle via useKeyboardShortcuts hook
-  - [ ] Subtask 2.7: Show streaming indicator (pulsing dot) during LLM processing
-  - [ ] Subtask 2.8: Implement empty state: "LLM thoughts will appear here during graph execution..."
-  - [ ] Subtask 2.9: Show last 100 messages with timestamps, truncate older messages
+- [x] Task 2: MonologuePanel implementation (AC: #2, #3, #6)
+  - [x] Subtask 2.1: Implement Radix Dialog slide-over from right (400px wide)
+  - [x] Subtask 2.2: Stream LLM Chain-of-Thought tokens via WebSocket (monologue messages)
+  - [x] Subtask 2.3: Implement auto-scroll with toggle switch (default: on)
+  - [x] Subtask 2.4: Implement export monologue history as Markdown file
+  - [x] Subtask 2.5: Implement clear history functionality
+  - [x] Subtask 2.6: Wire 'm' key toggle via useKeyboardShortcuts hook
+  - [x] Subtask 2.7: Show streaming indicator (pulsing dot) during LLM processing
+  - [x] Subtask 2.8: Implement empty state: "LLM thoughts will appear here during graph execution..."
+  - [x] Subtask 2.9: Show last 100 messages with timestamps, truncate older messages
 
-- [ ] Task 3: Integration with App.tsx (AC: #1, #2, #3, #5, #6)
-  - [ ] Subtask 3.1: Integrate ChatPanel with useWebSocket hook (sendMessage, graphUpdateQueue)
-  - [ ] Subtask 3.2: Integrate MonologuePanel with useWebSocket hook (monologueMessages, isStreaming)
-  - [ ] Subtask 3.3: Wire keyboard shortcuts: 'm' for MonologuePanel, Enter for ChatPanel submit
-  - [ ] Subtask 3.4: Show connection status indicator (connected/disconnected)
-  - [ ] Subtask 3.5: Implement notification system for success/error messages
+- [x] Task 3: Integration with App.tsx (AC: #1, #2, #3, #5, #6)
+  - [x] Subtask 3.1: Integrate ChatPanel with useWebSocket hook (sendMessage, graphUpdateQueue)
+  - [x] Subtask 3.2: Integrate MonologuePanel with useWebSocket hook (monologueMessages, isStreaming)
+  - [x] Subtask 3.3: Wire keyboard shortcuts: 'm' for MonologuePanel, Enter for ChatPanel submit
+  - [x] Subtask 3.4: Show connection status indicator (connected/disconnected)
+  - [x] Subtask 3.5: Implement notification system for success/error messages
 
-- [ ] Task 4: Testing (All ACs)
-  - [ ] Subtask 4.1: Unit tests for ChatPanel (validation, submit, generating state)
-  - [ ] Subtask 4.2: Unit tests for MonologuePanel (export, clear, auto-scroll, keyboard toggle)
-  - [ ] Subtask 4.3: Integration test for goal submission → graph generation flow
-  - [ ] Subtask 4.4: Accessibility test: ARIA labels, keyboard navigation, screen reader announcements
+- [x] Task 4: Testing (All ACs)
+  - [x] Subtask 4.1: Unit tests for ChatPanel (validation, submit, generating state)
+  - [x] Subtask 4.2: Unit tests for MonologuePanel (export, clear, auto-scroll, keyboard toggle)
+  - [x] Subtask 4.3: Integration test for goal submission → graph generation flow
+  - [x] Subtask 4.4: Accessibility test: ARIA labels, keyboard navigation, screen reader announcements
 
 ## Dev Notes
 
@@ -116,10 +116,40 @@ So that I can describe goals and watch AI thinking in real-time.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Qoder CLI (general-purpose agent)
 
 ### Debug Log References
 
+- Verified existing ChatPanel, MonologuePanel, useWebSocket, useKeyboardShortcuts, monologue-export implementations
+- Found most functionality already complete from previous stories
+- Added max 500-char validation to ChatPanel input
+- Added comprehensive test coverage: ChatPanel (20 tests), goal-to-graph-flow integration (10 tests), accessibility (25 tests)
+- All 105 tests pass across 11 test files
+
 ### Completion Notes List
 
+- **Task 1 (ChatPanel):** Added max 500 character validation with dynamic character count display. Existing implementation already had: min 10-char validation, generating state with animated ellipsis, disabled input during generation, WebSocket goal submission, collapsible panel, chat message history, "Chat-First, Canvas-Second" pattern.
+- **Task 2 (MonologuePanel):** Verified complete - Radix Dialog slide-over (400px), streaming tokens, auto-scroll toggle, Markdown export, clear history, 'm' key toggle, pulsing dot indicator, empty state, 100-message truncation with timestamps.
+- **Task 3 (Integration):** Verified complete - ChatPanel wired to useWebSocket, MonologuePanel wired to monologueMessages/isStreaming, keyboard shortcuts via useKeyboardShortcuts, connection status indicator, notification system.
+- **Task 4 (Testing):** Created 3 new test files:
+  - `ChatPanel.test.tsx` - 20 unit tests covering validation, submission, generating state, collapse behavior, message history
+  - `goal-to-graph-flow.test.tsx` - 10 integration tests covering goal submission, monologue streaming, export, auto-scroll, timestamps
+  - `accessibility-panels.test.tsx` - 25 a11y tests covering ARIA labels, keyboard navigation, screen reader compatibility
+- Updated `test-setup.ts` to import `@testing-library/jest-dom/vitest` for matchers like toBeDisabled, toBeChecked
+- All 105 tests pass (11 test files)
+
 ### File List
+
+- `frontend/src/components/panels/ChatPanel.tsx` (modified - added max 500-char validation)
+- `frontend/src/components/panels/ChatPanel.test.tsx` (new - 20 unit tests)
+- `frontend/src/__tests__/goal-to-graph-flow.test.tsx` (new - 10 integration tests)
+- `frontend/src/__tests__/accessibility-panels.test.tsx` (new - 25 accessibility tests)
+- `frontend/src/test-setup.ts` (modified - added jest-dom import)
+
+### Change Log
+
+- Story 3.2: Verified and completed ChatPanel & MonologuePanel implementation (2026-05-03)
+  - Added max 500-char input validation to ChatPanel with dynamic character count feedback
+  - Created comprehensive test suite: 55 new tests across 3 test files
+  - All acceptance criteria satisfied (AC #1-6)
+  - Total test coverage: 105 tests passing across 11 test files

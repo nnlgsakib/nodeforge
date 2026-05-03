@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 
 interface ChatMessage {
   id: string;
@@ -28,23 +28,32 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       text: 'Describe your goal and I will generate a node graph for you.',
     },
   ]);
+  const validationMsgRef = useRef<HTMLDivElement>(null);
 
-  const isValidInput = input.trim().length >= 10;
+  const inputLength = input.trim().length;
+  const isValidInput = inputLength >= 10 && inputLength <= 500;
+  const isTooLong = inputLength > 500;
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     const text = input.trim();
-    if (!text || text.length < 10 || generating) return;
+    if (!text || text.length < 10 || text.length > 500 || generating) return;
 
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: 'user',
       text,
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    onSendGoal(text);
+    try {
+      onSendGoal(text);
+    } catch {
+      // Parent rejected the goal; remove the orphaned message and restore input
+      setMessages((prev) => prev.slice(0, -1));
+      setInput(text);
+    }
     setInput('');
-  };
+  }, [input, generating, onSendGoal]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -64,12 +73,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           className="collapse-btn"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expand chat' : 'Collapse chat'}
+          aria-label={collapsed ? 'Expand chat' : 'Collapse chat'}
         >
           {collapsed ? '→' : '←'}
         </button>
       </div>
 
-      <div className="chat-messages">
+      <div className="chat-messages" role="log" aria-live="polite">
         {messages.map((msg) => (
           <div key={msg.id} className={`chat-message ${msg.role} ${msg.isGenerating ? 'generating' : ''}`}>
             {msg.isGenerating ? (
@@ -97,15 +107,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={generating}
-          minLength={10}
+          aria-label="Goal description"
+          aria-describedby="chat-validation-msg"
         />
         <button onClick={handleSubmit} disabled={!isValidInput || generating}>
           Send
         </button>
       </div>
       {!isValidInput && input.length > 0 && (
-        <div style={{ padding: '0 12px 8px', fontSize: '12px', color: 'var(--error)' }}>
-          Minimum 10 characters required
+        <div id="chat-validation-msg" ref={validationMsgRef} style={{ padding: '0 12px 8px', fontSize: '12px', color: isTooLong ? 'var(--error)' : 'var(--text-secondary)' }}>
+          {isTooLong
+            ? `Maximum 500 characters allowed (${inputLength}/500)`
+            : `Minimum 10 characters required (${inputLength}/10)`}
         </div>
       )}
     </div>

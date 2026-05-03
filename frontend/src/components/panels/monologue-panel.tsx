@@ -33,16 +33,20 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
     if (autoScroll && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'instant' });
     }
-  }, [messages, autoScroll]);
+  }, [messages.length, autoScroll]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     setExporting(true);
+    // Defer export to next tick so React flushes the exporting state
+    await Promise.resolve();
     exportMonologueAsMarkdown(messages, sessionId);
     setExporting(false);
   }, [messages, sessionId]);
 
   const handleClear = () => {
-    if (onClear) onClear();
+    if (onClear && (messages.length === 0 || window.confirm('Clear all monologue history?'))) {
+      onClear();
+    }
   };
 
   return (
@@ -55,7 +59,7 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
           title="Toggle Monologue Panel (M)"
           style={{
             position: 'fixed',
-            right: collapsed ? '8px' : '408px',
+            right: collapsed ? '8px' : 'calc(var(--monologue-panel-width, 400px) + 8px)',
             bottom: '16px',
             zIndex: 50,
             background: 'var(--bg-secondary)',
@@ -262,7 +266,9 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
                         marginBottom: '4px',
                       }}
                     >
-                      {new Date(msg.timestamp).toLocaleTimeString()}
+                      {Number.isFinite(msg.timestamp)
+                        ? new Date(msg.timestamp).toLocaleTimeString()
+                        : '—'}
                     </div>
                     <div style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
                   </div>
@@ -292,14 +298,6 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
             />
             <label htmlFor="autoscroll-toggle">Auto-scroll</label>
           </div>
-
-          {/* Pulse animation */}
-          <style>{`
-            @keyframes pulse {
-              0%, 100% { opacity: 1; }
-              50% { opacity: 0.3; }
-            }
-          `}</style>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

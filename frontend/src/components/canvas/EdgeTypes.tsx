@@ -209,16 +209,16 @@ interface EdgeWrapperProps {
   tooltipId: string;
   data: AppEdgeData | undefined;
   handlers: {
-    onMouseEnter: (e: React.MouseEvent) => void;
-    onMouseMove: (e: React.MouseEvent) => void;
-    onMouseLeave: () => void;
-    onPointerDown: () => void;
-    onPointerUp: (e: React.PointerEvent) => void;
+    handleMouseEnter: (e: React.MouseEvent) => void;
+    handleMouseMove: (e: React.MouseEvent) => void;
+    handleMouseLeave: () => void;
+    handlePointerDown: () => void;
+    handlePointerUp: (e: React.PointerEvent) => void;
   };
 }
 
 const EdgeWrapper: React.FC<EdgeWrapperProps> = ({
-  id,
+  id: _id,
   ariaLabel,
   children,
   showTooltip,
@@ -230,11 +230,11 @@ const EdgeWrapper: React.FC<EdgeWrapperProps> = ({
 }) => (
   <>
     <g
-      onMouseEnter={handlers.onMouseEnter}
-      onMouseMove={handlers.onMouseMove}
-      onMouseLeave={handlers.onMouseLeave}
-      onPointerDown={handlers.onPointerDown}
-      onPointerUp={handlers.onPointerUp}
+      onMouseEnter={handlers.handleMouseEnter}
+      onMouseMove={handlers.handleMouseMove}
+      onMouseLeave={handlers.handleMouseLeave}
+      onPointerDown={handlers.handlePointerDown}
+      onPointerUp={handlers.handlePointerUp}
       role="graphics-symbol"
       aria-label={ariaLabel}
       aria-describedby={showTooltip ? tooltipId : undefined}
