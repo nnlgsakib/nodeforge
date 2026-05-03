@@ -6,7 +6,7 @@
 # story_location: _bmad-output/implementation-artifacts
 
 generated: 2026-05-03T16:00:00+0600
-last_updated: 2026-05-04T00:15:00+0600
+last_updated: 2026-05-03T16:45:00+0600
 project: nfv2
 project_key: NOKEY
 tracking_system: file-system
@@ -63,7 +63,7 @@ development_status:
       2-8-headless-cli-execution: done
       epic-2-retrospective: optional
       epic-3: in-progress
-      3-1-custom-nodetypes-and-edgetypes: ready-for-dev
+      3-1-custom-nodetypes-and-edgetypes: done
       3-2-chatpanel-and-monologuepanel: ready-for-dev
       3-3-canvascontrols-and-sessionexplorer: ready-for-dev
       3-4-skillmarketplace-and-accessibilitytoolbar: ready-for-dev

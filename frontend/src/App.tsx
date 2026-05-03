@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -7,6 +7,7 @@ import {
   useNodesState,
   useEdgesState,
   type OnConnect,
+  useReactFlow,
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
@@ -17,9 +18,23 @@ import { SessionExplorer } from './components/panels/SessionExplorer';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { MonologuePanel } from './components/panels/monologue-panel';
 import { CanvasControls } from './components/canvas/CanvasControls';
+import { PhaseBands } from './components/canvas/PhaseBands';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLayoutWorker } from './hooks/useLayoutWorker';
+
+// P8: Hoisted outside component to avoid recreation every render
+const FILE_TO_NODE_TYPE: Record<string, string> = {
+  'go.mod': 'implement',
+  'go.sum': 'implement',
+  '.go': 'implement',
+  'spec.md': 'spec',
+  'plan.md': 'plan',
+  'test.go': 'test',
+  '_test.go': 'test',
+  'review.md': 'review',
+  'README.md': 'goal',
+};
 
 interface ProjectResult {
   sessionId: string;
@@ -43,14 +58,6 @@ async function createProject(projectName: string): Promise<ProjectResult> {
   }
   return response.json();
 }
-
-// Phase band colors for canvas top (Task 3.3)
-const phaseBands = [
-  { label: 'Discovery', color: '#3B82F6', x: 0, width: 25 },
-  { label: 'Execution', color: '#F97316', x: 25, width: 25 },
-  { label: 'Recovery', color: '#EF4444', x: 50, width: 25 },
-  { label: 'Completion', color: '#22C55E', x: 75, width: 25 },
-];
 
 export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -232,6 +239,64 @@ export default function App() {
     [connected, sendMessage]
   );
 
+  // Drag-and-drop file to node creation (AC4)
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false); // P7: ref guard to avoid re-render spam
+  const { screenToFlowPosition } = useReactFlow(); // P4: proper canvas coords
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDraggingRef.current) {
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    isDraggingRef.current = false;
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      const files = Array.from(event.dataTransfer.files);
+      if (files.length === 0) return;
+
+      const file = files[0];
+      const fileName = file.name;
+      const parts = fileName.split('.');
+      const ext = parts.length > 1 ? '.' + parts[parts.length - 1] : undefined;
+
+      // Determine node type from filename
+      let nodeType = FILE_TO_NODE_TYPE[fileName] ?? (ext ? FILE_TO_NODE_TYPE[ext] : undefined) ?? 'implement';
+
+      // P4: Use React Flow's screenToFlowPosition for correct canvas coordinates
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const newNode = {
+        id: `node-${Date.now()}-${crypto.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)}`,
+        type: nodeType,
+        position,
+        data: { label: fileName },
+      };
+
+      setNodes((nds) => [...nds, newNode]);
+      setNotification({
+        type: 'success',
+        message: `Created "${nodeType}" node from "${fileName}"`,
+      });
+      setTimeout(() => setNotification(null), 3000);
+    },
+    [setNodes, screenToFlowPosition]
+  );
+
   return (
     <div className="app-container">
       {notification && (
@@ -266,46 +331,28 @@ export default function App() {
         {connected ? 'Connected' : 'Disconnected'}
       </div>
 
-      {/* Phase bands at top of canvas (Task 3.3) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '24px',
-          display: 'flex',
-          zIndex: 5,
-          background: 'var(--bg-primary)',
-          borderBottom: '1px solid var(--bg-tertiary)',
-        }}
-      >
-        {phaseBands.map((band) => (
-          <div
-            key={band.label}
-            style={{
-              flex: `0 0 ${band.width}%`,
-              background: band.color,
-              opacity: 0.2,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '10px',
-              color: 'var(--text-secondary)',
-              fontWeight: 500,
-            }}
-            title={band.label}
-          >
-            {band.label}
-          </div>
-        ))}
-      </div>
+      {/* Drag overlay indicator */}
+      {isDragging && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1000,
+            pointerEvents: 'none',
+            border: '2px dashed var(--accent)',
+            backgroundColor: 'rgba(6, 182, 212, 0.05)',
+          }}
+        />
+      )}
 
       <div className="sidebar">
         <SessionExplorer onCreateProject={handleCreateProject} />
       </div>
 
-      <div className="main-content" style={{ marginTop: '24px' }}>
+      <div className="main-content" style={{ marginTop: '24px' }} ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
           nodeTypes={nodeTypes}
@@ -314,10 +361,15 @@ export default function App() {
           edgeTypes={edgeTypes}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           nodesDraggable={true}
           nodesConnectable={true}
+          proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#334155" />
+          <PhaseBands />
           <CanvasControls nodes={nodes} edges={edges} />
         </ReactFlow>
       </div>

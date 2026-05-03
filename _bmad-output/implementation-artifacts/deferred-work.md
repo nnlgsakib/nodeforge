@@ -10,6 +10,12 @@
 
 - WebSocket hub `run()` loop has no stop mechanism [serve.go:61-91,232] — pre-existing issue not caused by this story, would require shutdown signal handling in hub
 
+## Deferred from: code review of story-3.1-custom-nodetypes-and-edgetypes (2026-05-03)
+
+- `hideAttribution: true` license risk — Requires paid React Flow license [App.tsx:368] — deferred, pre-existing decision
+- `as any[]` pervasive in App.tsx layout worker — Pre-existing pattern not introduced by this diff [App.tsx] — deferred, pre-existing technical debt
+- `chatGenerating` flag only reset by layout effect — Pre-existing in App.tsx, not in this diff [App.tsx] — deferred, pre-existing
+
 ## Deferred from: code review of 2-4-prompt-optimization-and-token-budget (2026-05-03)
 
 - Missing REST API endpoint for budget status reporting (AC4) — WebSocket implemented but REST API for BudgetStatus() not implemented, separate concern from story scope
