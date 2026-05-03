@@ -26,11 +26,11 @@ type Feedback struct {
 // PromptOptimizer optimizes prompts based on historical feedback
 type PromptOptimizer struct {
 	db         *badger.DB
-	assembler  *contextpkg.Assembler
+	assembler  *contextpkg.ContextAssembler
 }
 
 // NewPromptOptimizer creates a new PromptOptimizer with BadgerDB storage and optional assembler
-func NewPromptOptimizer(db *badger.DB, assembler *contextpkg.Assembler) *PromptOptimizer {
+func NewPromptOptimizer(db *badger.DB, assembler *contextpkg.ContextAssembler) *PromptOptimizer {
 	return &PromptOptimizer{db: db, assembler: assembler}
 }
 
@@ -124,14 +124,9 @@ func (po *PromptOptimizer) OptimizePrompt(ctx context.Context, originalPrompt st
 	// Assemble context from knowledge graph (if assembler available)
 	contextStr := ""
 	if po.assembler != nil {
-		query := contextpkg.ContextQuery{
-			NodeType:   nodeType,
-			Prompt:     originalPrompt,
-			MaxTokens:  1000, // Limit context tokens
-		}
-		result, err := po.assembler.AssembleContext(ctx, query)
-		if err == nil && result != nil {
-			contextStr = result.Context
+		ctxContext, err := po.assembler.AssembleContext(nodeType, 1000)
+		if err == nil {
+			contextStr = ctxContext
 		}
 	}
 

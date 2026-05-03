@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/dgraph-io/badger/v4"
 )
@@ -155,6 +156,77 @@ func (s *Store) GetMonologueHistory(ctx context.Context, sessionID string) ([]Mo
 		return nil, err
 	}
 	return messages, nil
+}
+
+// NodeMemory manages node memory reuse (FR18)
+type NodeMemory struct {
+	db *badger.DB
+}
+
+// NewNodeMemory creates a new NodeMemory instance
+func NewNodeMemory(db *badger.DB) *NodeMemory {
+	return &NodeMemory{db: db}
+}
+
+// StoreMemory stores node output for downstream use (Subtask 2.2)
+func (nm *NodeMemory) StoreMemory(nodeID, key, value string) error {
+	return nm.db.Update(func(txn *badger.Txn) error {
+		memKey := []byte(fmt.Sprintf("mem:%s:%s", nodeID, key))
+		return txn.Set(memKey, []byte(value))
+	})
+}
+
+// GetMemory retrieves upstream memory for current node (Subtask 2.3)
+func (nm *NodeMemory) GetMemory(nodeID, key string) (string, bool) {
+	var value []byte
+	err := nm.db.View(func(txn *badger.Txn) error {
+		memKey := []byte(fmt.Sprintf("mem:%s:%s", nodeID, key))
+		item, err := txn.Get(memKey)
+		if err != nil {
+			return fmt.Errorf("failed to get memory: %w", err)
+		}
+		return item.Value(func(val []byte) error {
+			value = make([]byte, len(val))
+			copy(value, val)
+			return nil
+		})
+	})
+
+	if err != nil {
+		return "", false
+	}
+	return string(value), true
+}
+
+// InjectMemoryIntoPrompt adds memory context to LLM prompts (Subtask 2.4)
+func (nm *NodeMemory) InjectMemoryIntoPrompt(prompt string, nodeID string) string {
+	// Get all memory entries for this node
+	var memories []string
+	_ = nm.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		prefix := []byte(fmt.Sprintf("mem:%s:", nodeID))
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			err := item.Value(func(val []byte) error {
+				memories = append(memories, string(val))
+				return nil
+			})
+			if err != nil {
+				continue
+			}
+		}
+		return nil
+	})
+
+	if len(memories) == 0 {
+		return prompt
+	}
+
+	memoryContext := "Memory Context:\n" + strings.Join(memories, "\n")
+	return prompt + "\n\n" + memoryContext
 }
 
 // DefaultStorePath returns the default BadgerDB path

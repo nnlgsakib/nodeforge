@@ -20,20 +20,24 @@ type NodeUpdateBroadcaster interface {
 
 // Executor runs nodes sequentially with retry until acceptance criteria are met
 type Executor struct {
-	graph            *Graph
-	llmProv          llm.LLMProvider
-	store            *nfContext.Store
-	hub              NodeUpdateBroadcaster // WebSocket hub for real-time updates
-	monologueMessages []nfContext.MonologueMessage
-	currentNodeID    string
+	graph             *Graph
+	llmProv           llm.LLMProvider
+	store             *nfContext.Store
+	hub               NodeUpdateBroadcaster // WebSocket hub for real-time updates
+	monologueMessages  []nfContext.MonologueMessage
+	currentNodeID     string
+	contextAssembler  *nfContext.ContextAssembler // Context assembly for LLM calls (Task 5)
+	specGen           *nfContext.SpecGenerator    // Auto-spec generation (AC3)
 }
 
 // NewExecutor creates a new executor for the given graph
-func NewExecutor(graph *Graph, llmProv llm.LLMProvider, store *nfContext.Store) *Executor {
+func NewExecutor(graph *Graph, llmProv llm.LLMProvider, store *nfContext.Store, contextAssembler *nfContext.ContextAssembler, specGen *nfContext.SpecGenerator) *Executor {
 	return &Executor{
-		graph:   graph,
-		llmProv: llmProv,
-		store:   store,
+		graph:            graph,
+		llmProv:          llmProv,
+		store:            store,
+		contextAssembler: contextAssembler,
+		specGen:          specGen,
 	}
 }
 
@@ -58,7 +62,18 @@ func (e *Executor) Run(ctx context.Context) error {
 		e.updateNodeStatus(ctx, node.ID, NodeStatusRunning, 0.0)
 
 		// Build context from upstream node outputs (FR18)
-		contextStr := e.buildContext(ctx, i)
+		// Use ContextAssembler if available, otherwise fall back to buildContext
+		var contextStr string
+		if e.contextAssembler != nil {
+			assembled, err := e.contextAssembler.AssembleContext(node.ID, 2000)
+			if err == nil && assembled != "" {
+				contextStr = assembled
+			} else {
+				contextStr = e.buildContext(ctx, i)
+			}
+		} else {
+			contextStr = e.buildContext(ctx, i)
+		}
 
 		// Retry loop until acceptance criteria are met
 		maxRetries := 3
@@ -87,6 +102,14 @@ func (e *Executor) Run(ctx context.Context) error {
 				}
 
 				e.updateNodeStatus(ctx, node.ID, NodeStatusComplete, 1.0)
+
+				// Auto-spec generation (AC3 - FR19)
+				if e.specGen != nil {
+					_, specErr := e.specGen.GenerateSpec(node.ID, output)
+					if specErr == nil {
+						e.specGen.AddSystemReferences(node.ID, []string{string(node.Type)})
+					}
+				}
 				break
 			}
 

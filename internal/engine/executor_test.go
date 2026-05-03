@@ -15,7 +15,7 @@ func TestNewExecutor(t *testing.T) {
 			{ID: "node-1", Type: NodeTypeGoal, Label: "Goal", Status: NodeStatusPending},
 		},
 	}
-	exec := NewExecutor(graph, nil, nil)
+	exec := NewExecutor(graph, nil, nil, nil, nil)
 	assert.NotNil(t, exec)
 	assert.Equal(t, graph, exec.graph)
 }
@@ -28,7 +28,7 @@ func TestNodeStatusUpdate(t *testing.T) {
 			{ID: "node-1", Type: NodeTypeGoal, Label: "Goal", Status: NodeStatusPending},
 		},
 	}
-	exec := NewExecutor(graph, nil, nil)
+	exec := NewExecutor(graph, nil, nil, nil, nil)
 
 	// Update status
 	exec.updateNodeStatus(context.Background(), "node-1", NodeStatusRunning, 0.5)
@@ -71,7 +71,7 @@ func TestBuildContext(t *testing.T) {
 			{ID: "node-1", Type: NodeTypeGoal, Label: "Goal", Status: NodeStatusComplete},
 		},
 	}
-	exec := NewExecutor(graph, nil, nil)
+	exec := NewExecutor(graph, nil, nil, nil, nil)
 
 	// Build context for node at index 1 (should be empty since store is nil)
 	ctx := exec.buildContext(context.Background(), 1)

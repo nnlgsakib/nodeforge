@@ -2,111 +2,82 @@ package context
 
 import (
 	"context"
-	"strings"
+	"errors"
+	"fmt"
 	"time"
+
+	"github.com/dgraph-io/badger/v4"
 )
 
-// Assembler retrieves and assembles knowledge graph context for prompt optimization
-type Assembler struct {
-	store *Store
+// ContextAssembler assembles context for LLM calls (Subtask 5.1)
+type ContextAssembler struct {
+	kg      *KnowledgeGraph // Uses KnowledgeGraph for context assembly
+	splitter *GraphSplitter // Handles context overflow (AC4)
 }
 
-// NewAssembler creates a new context assembler
-func NewAssembler(store *Store) *Assembler {
-	return &Assembler{store: store}
+// NewContextAssembler creates a new ContextAssembler
+func NewContextAssembler(db *badger.DB) *ContextAssembler {
+	return &ContextAssembler{
+		kg:       NewKnowledgeGraph(db),
+		splitter:  NewGraphSplitter(db),
+	}
 }
 
-// ContextQuery represents a query for knowledge graph context
-type ContextQuery struct {
-	NodeType   string `json:"nodeType"`
-	Prompt     string `json:"prompt"`
-	MaxTokens  int    `json:"maxTokens"`
-}
-
-// ContextResult contains assembled context for prompt optimization
-type ContextResult struct {
-	Context    string `json:"context"`
-	TokenCount int    `json:"tokenCount"`
-	QueryTimeMs int64  `json:"queryTimeMs"`
-}
-
-// AssembleContext retrieves relevant context from knowledge graph
-// Completes in <100ms (NFR-04) for typical queries
-func (a *Assembler) AssembleContext(ctx context.Context, query ContextQuery) (*ContextResult, error) {
+// AssembleContext assembles context for LLM call (called by LLM provider before invocation)
+// Must complete in <100ms (NFR-04), fallback to naive prompt on timeout (Subtask 5.4)
+func (ca *ContextAssembler) AssembleContext(nodeID string, maxTokens int) (string, error) {
 	start := time.Now()
-
-	// Retrieve relevant graph data from BadgerDB
-	contextStr, err := a.retrieveRelevantContext(ctx, query)
-	if err != nil {
-		// Return empty context on error (never block execution)
-		return &ContextResult{
-			Context:     "",
-			TokenCount:  0,
-			QueryTimeMs: time.Since(start).Milliseconds(),
-		}, nil
-	}
-
-	// Enforce MaxTokens limit if specified
-	tokenCount := estimateTokens(contextStr)
-	if query.MaxTokens > 0 && tokenCount > query.MaxTokens {
-		// Truncate context to fit within MaxTokens
-		contextStr = truncateToTokens(contextStr, query.MaxTokens)
-		tokenCount = estimateTokens(contextStr)
-	}
-
-	result := &ContextResult{
-		Context:     contextStr,
-		TokenCount:  tokenCount,
-		QueryTimeMs: time.Since(start).Milliseconds(),
-	}
-
-	// Validate NFR-04: <100ms query time
-	if result.QueryTimeMs > 100 {
-		// Log warning if query takes too long
-		// In production, use proper logger
-	}
-
-	return result, nil
-}
-
-// retrieveRelevantContext fetches relevant context from BadgerDB
-func (a *Assembler) retrieveRelevantContext(ctx context.Context, query ContextQuery) (string, error) {
-	if a.store == nil {
-		return "", nil
-	}
-
-	// Simple implementation: retrieve recent node outputs as context
-	var contextBuilder strings.Builder
-
-	// Example: retrieve monologue history as context
-	messages, err := a.store.GetMonologueHistory(ctx, "current-session")
-	if err == nil && len(messages) > 0 {
-		contextBuilder.WriteString("Recent monologue context:\n")
-		for _, msg := range messages {
-			contextBuilder.WriteString(msg.Text)
-			contextBuilder.WriteString("\n")
+	defer func() {
+		if dur := time.Since(start); dur > 100*time.Millisecond {
+			fmt.Printf("WARN: AssembleContext took %v (>100ms threshold)\n", dur)
 		}
+	}()
+
+	// Check if graph needs splitting (AC4 - FR20)
+	subGraphs, err := ca.splitter.SplitGraphIfNeeded(nodeID, maxTokens)
+	if err != nil {
+		fmt.Printf("WARN: SplitGraphIfNeeded failed: %v\n", err)
+	}
+	if len(subGraphs) > 1 {
+		fmt.Printf("INFO: Graph split into %d sub-graphs for node %s\n", len(subGraphs), nodeID)
 	}
 
-	return contextBuilder.String(), nil
+	// Create context with 100ms timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	contextStr, err := ca.kg.BuildContext(ctx, nodeID, maxTokens)
+	if err != nil {
+		// Check if it was a timeout
+		if errors.Is(err, context.DeadlineExceeded) {
+			fmt.Println("WARN: Context assembly timed out, falling back to naive prompt")
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to assemble context: %w", err)
+	}
+
+	return contextStr, nil
 }
 
-// estimateTokens estimates token count for context string
-func estimateTokens(text string) int {
-	if len(text) == 0 {
-		return 0
+// InjectContextIntoPrompt injects context into LLM prompt (Subtask 5.3)
+// Used by story 2.4's PromptOptimizer
+func InjectContextIntoPrompt(prompt, ctxContext string) string {
+	if ctxContext == "" {
+		return prompt
 	}
-	return (len(text) + 3) / 4 // ~4 chars per token
+	return fmt.Sprintf("%s\n\n[Context]:\n%s", prompt, ctxContext)
 }
 
-// truncateToTokens truncates text to approximately maxTokens by removing excess characters
-func truncateToTokens(text string, maxTokens int) string {
-	if maxTokens <= 0 {
-		return text
-	}
-	maxChars := maxTokens * 4 // approximate chars per token
-	if len(text) <= maxChars {
-		return text
-	}
-	return text[:maxChars]
-}
+// Documented integration interface (Subtask 5.2):
+// To integrate with LLM provider (story 2.2):
+// 1. In internal/llm/provider.go, before calling LLM API:
+//    contextAssembler := context.NewContextAssembler(db)
+//    ctxContext, err := contextAssembler.AssembleContext(nodeID, maxTokens)
+//    if err == nil {
+//        prompt = context.InjectContextIntoPrompt(originalPrompt, ctxContext)
+//    }
+// 2. Pass the enhanced prompt to LLM provider's Chat() or ChatStream() method
+//
+// Integration with Prompt Optimizer (story 2.4):
+// - PromptOptimizer.OptimizePrompt() can use the context from AssembleContext()
+// - Both have separate timing requirements: <10ms for budget, <100ms for context
