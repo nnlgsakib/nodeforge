@@ -31,7 +31,7 @@ func TestNodeStatusUpdate(t *testing.T) {
 	exec := NewExecutor(graph, nil, nil)
 
 	// Update status
-	exec.updateNodeStatus("node-1", NodeStatusRunning, 0.5)
+	exec.updateNodeStatus(context.Background(), "node-1", NodeStatusRunning, 0.5)
 
 	// Check if node was updated
 	assert.Equal(t, NodeStatusRunning, graph.Nodes[0].Status)

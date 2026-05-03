@@ -422,6 +422,25 @@ func runServer() error {
 		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\n")
 	})
 
+	// Get monologue history for a session
+	r.GET("/api/v1/sessions/:id/monologue", func(c *gin.Context) {
+		sessionID := c.Param("id")
+		if sessionID == "" {
+			c.JSON(400, gin.H{"error": "missing session ID"})
+			return
+		}
+		if hub.store == nil {
+			c.JSON(500, gin.H{"error": "store not available"})
+			return
+		}
+		messages, err := hub.store.GetMonologueHistory(c.Request.Context(), sessionID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "failed to get monologue history"})
+			return
+		}
+		c.JSON(200, messages)
+	})
+
 	// Serve embedded frontend
 	if frontendFS != nil {
 		r.NoRoute(func(c *gin.Context) {

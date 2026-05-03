@@ -15,9 +15,10 @@ import { initialNodes, nodeTypes } from './nodes';
 import { initialEdges, edgeTypes } from './edges';
 import { SessionExplorer } from './components/panels/SessionExplorer';
 import { ChatPanel } from './components/panels/ChatPanel';
-import { MonologuePanel } from './components/panels/MonologuePanel';
+import { MonologuePanel } from './components/panels/monologue-panel';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 interface ProjectResult {
   sessionId: string;
@@ -57,9 +58,10 @@ export default function App() {
   const [monologueCollapsed, setMonologueCollapsed] = useState(false);
   const [chatGenerating, setChatGenerating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [sessionId, setSessionId] = useState<string | undefined>();
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-    // WebSocket connection
+  // WebSocket connection
   const {
     connected,
     monologueMessages,
@@ -140,77 +142,26 @@ export default function App() {
     clearEdgeUpdates();
   }, [edgeUpdateQueue, setEdges, clearEdgeUpdates]);
 
+  // Keyboard shortcuts via dedicated hook
+  useKeyboardShortcuts({
+    onToggleMonologue: () => setMonologueCollapsed((prev) => !prev),
+    onTogglePause: (paused) => setIsPaused(paused),
+    isPaused,
+    onSkipNode: () => console.log('Skip node triggered'),
+    onForkSession: () => console.log('Fork session triggered'),
+    onRetryNode: () => console.log('Retry failed node triggered'),
+    sendMessage,
+  });
+
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((edges) => addEdge(connection, edges)),
     [setEdges]
   );
 
-  // Vim/Emacs keybindings and one-key controls (Tasks 4.1, 4.2)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't capture keys when typing in inputs
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
-      // Vim keybindings (Task 4.1)
-      if (e.key === 'h' || e.key === 'j' || e.key === 'k' || e.key === 'l') {
-        e.preventDefault();
-        const step = 50;
-        const direction = { h: [-step, 0], j: [0, step], k: [0, -step], l: [step, 0] }[e.key] || [0, 0];
-        // Pan canvas using React Flow's setViewport
-        const reactFlowInstance = document.querySelector('.react-flow');
-        if (reactFlowInstance) {
-          // Simplified - would use React Flow's pan methods
-          console.log(`Vim nav: ${e.key}`, direction);
-        }
-      }
-
-      // Emacs keybindings (Task 4.1)
-      if (e.ctrlKey && (e.key === 'f' || e.key === 'b' || e.key === 'n' || e.key === 'p')) {
-        e.preventDefault();
-        const step = 50;
-        const direction = { f: [step, 0], b: [-step, 0], n: [0, step], p: [0, -step] }[e.key] || [0, 0];
-        console.log(`Emacs nav: Ctrl+${e.key}`, direction);
-      }
-
-      // One-key controls (Task 4.2)
-      switch (e.key) {
-        case ' ':
-        case 'p':
-          e.preventDefault();
-          setIsPaused((prev) => !prev);
-          sendMessage({ type: 'pause', paused: !isPaused });
-          console.log(`Session ${isPaused ? 'resumed' : 'paused'}`);
-          break;
-        case 's':
-          e.preventDefault();
-          sendMessage({ type: 'skip_node' });
-          console.log('Skip node triggered');
-          break;
-        case 'f':
-          e.preventDefault();
-          sendMessage({ type: 'fork_session' });
-          console.log('Fork session triggered');
-          break;
-        case 'r':
-          e.preventDefault();
-          sendMessage({ type: 'retry_node' });
-          console.log('Retry failed node triggered');
-          break;
-        case 'm':
-          e.preventDefault();
-          setMonologueCollapsed((prev) => !prev);
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, sendMessage]);
-
   const handleCreateProject = async (projectName: string) => {
     try {
       const result = await createProject(projectName);
+      setSessionId(result.sessionId);
       console.log('Project created:', result);
       setNotification({ type: 'success', message: `Project "${projectName}" created! Session: ${result.sessionId}` });
     } catch (err) {
@@ -335,6 +286,7 @@ export default function App() {
         messages={monologueMessages}
         isStreaming={isStreaming}
         onClear={clearMonologueMessages}
+        sessionId={sessionId}
       />
     </div>
   );

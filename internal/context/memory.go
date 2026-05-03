@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -103,6 +104,57 @@ func (s *Store) GetNodeOutput(ctx context.Context, graphID, nodeID string) (stri
 		return "", err
 	}
 	return string(output), nil
+}
+
+// MonologueMessage represents a single LLM inner monologue entry
+type MonologueMessage struct {
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// SaveMonologueHistory stores monologue messages for a session
+func (s *Store) SaveMonologueHistory(ctx context.Context, sessionID string, messages []MonologueMessage) error {
+	if sessionID == "" {
+		return fmt.Errorf("sessionID cannot be empty")
+	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := []byte("monologue:" + sessionID)
+		data, err := json.Marshal(messages)
+		if err != nil {
+			return fmt.Errorf("failed to marshal monologue history: %w", err)
+		}
+		return txn.Set(key, data)
+	})
+}
+
+// GetMonologueHistory retrieves monologue messages for a session
+func (s *Store) GetMonologueHistory(ctx context.Context, sessionID string) ([]MonologueMessage, error) {
+	var messages []MonologueMessage
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("monologue:" + sessionID))
+		if err != nil {
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				// Return empty slice if not found
+				messages = []MonologueMessage{}
+				return nil
+			}
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			if len(val) == 0 {
+				messages = []MonologueMessage{}
+				return nil
+			}
+			return json.Unmarshal(val, &messages)
+		})
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
 }
 
 // DefaultStorePath returns the default BadgerDB path

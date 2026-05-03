@@ -75,13 +75,13 @@ export function useWebSocket(): UseWebSocketReturn {
           case 'monologue':
             setIsStreaming(true);
             setMonologueMessages((prev) => [
-              ...prev,
+              ...prev.slice(-499),
               {
-                id: `msg-${Date.now()}`,
+                id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 text: data.text || data.token || '',
                 timestamp: Date.now(),
               },
-            ]);
+            ].slice(-500));
             // Reset timeout on new messages
             if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
             streamTimeoutRef.current = setTimeout(() => setIsStreaming(false), 2000);
@@ -97,6 +97,7 @@ export function useWebSocket(): UseWebSocketReturn {
 
     ws.onclose = () => {
       setConnected(false);
+      setIsStreaming(false);
       wsRef.current = null;
       // Clear stream timeout on disconnect
       if (streamTimeoutRef.current) {

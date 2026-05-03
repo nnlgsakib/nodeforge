@@ -20,10 +20,12 @@ type NodeUpdateBroadcaster interface {
 
 // Executor runs nodes sequentially with retry until acceptance criteria are met
 type Executor struct {
-	graph     *Graph
-	llmProv   llm.LLMProvider
-	store     *nfContext.Store
-	hub       NodeUpdateBroadcaster // WebSocket hub for real-time updates
+	graph            *Graph
+	llmProv          llm.LLMProvider
+	store            *nfContext.Store
+	hub              NodeUpdateBroadcaster // WebSocket hub for real-time updates
+	monologueMessages []nfContext.MonologueMessage
+	currentNodeID    string
 }
 
 // NewExecutor creates a new executor for the given graph
@@ -53,7 +55,7 @@ func (e *Executor) Run(ctx context.Context) error {
 		}
 
 		// Mark node as running
-		e.updateNodeStatus(node.ID, NodeStatusRunning, 0.0)
+		e.updateNodeStatus(ctx, node.ID, NodeStatusRunning, 0.0)
 
 		// Build context from upstream node outputs (FR18)
 		contextStr := e.buildContext(ctx, i)
@@ -63,7 +65,7 @@ func (e *Executor) Run(ctx context.Context) error {
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			// Check for context cancellation
 			if ctx.Err() != nil {
-				e.updateNodeStatus(node.ID, NodeStatusFailed, 0.0)
+				e.updateNodeStatus(ctx, node.ID, NodeStatusFailed, 0.0)
 				return fmt.Errorf("node %s cancelled: %w", node.ID, ctx.Err())
 			}
 
@@ -71,7 +73,7 @@ func (e *Executor) Run(ctx context.Context) error {
 			output, err := e.executeNode(ctx, node, contextStr)
 			if err != nil {
 				if attempt == maxRetries-1 {
-					e.updateNodeStatus(node.ID, NodeStatusFailed, 0.0)
+					e.updateNodeStatus(ctx, node.ID, NodeStatusFailed, 0.0)
 					return fmt.Errorf("node %s failed after %d attempts: %w", node.ID, maxRetries, err)
 				}
 				continue
@@ -84,13 +86,13 @@ func (e *Executor) Run(ctx context.Context) error {
 					e.store.SaveNodeOutput(ctx, e.graph.ID, node.ID, output)
 				}
 
-				e.updateNodeStatus(node.ID, NodeStatusComplete, 1.0)
+				e.updateNodeStatus(ctx, node.ID, NodeStatusComplete, 1.0)
 				break
 			}
 
 			// Criteria not met, retry
 			if attempt == maxRetries-1 {
-				e.updateNodeStatus(node.ID, NodeStatusFailed, 0.0)
+				e.updateNodeStatus(ctx, node.ID, NodeStatusFailed, 0.0)
 				return fmt.Errorf("node %s failed: acceptance criteria not met after %d attempts", node.ID, maxRetries)
 			}
 		}
@@ -104,6 +106,10 @@ func (e *Executor) Run(ctx context.Context) error {
 
 // executeNode runs a single node via LLM
 func (e *Executor) executeNode(ctx context.Context, node *Node, contextStr string) (string, error) {
+	// Reset monologue buffer for this node
+	e.currentNodeID = node.ID
+	e.monologueMessages = nil
+
 	if e.llmProv == nil {
 		// Simulate execution for testing
 		select {
@@ -233,6 +239,12 @@ func (e *Executor) streamLLMResponse(ctx context.Context, token string) {
 	if e.hub == nil || token == "" {
 		return
 	}
+	// Accumulate for persistence
+	e.monologueMessages = append(e.monologueMessages, nfContext.MonologueMessage{
+		ID:        fmt.Sprintf("msg-%d", time.Now().UnixNano()),
+		Text:       token,
+		Timestamp:  time.Now().UnixMilli(),
+	})
 	data, _ := json.Marshal(map[string]interface{}{
 		"type": "llm_chunk",
 		"text": token,
@@ -241,7 +253,7 @@ func (e *Executor) streamLLMResponse(ctx context.Context, token string) {
 }
 
 // updateNodeStatus updates node status and broadcasts via WebSocket (Task 5.4)
-func (e *Executor) updateNodeStatus(nodeID string, status NodeStatus, progress float64) {
+func (e *Executor) updateNodeStatus(ctx context.Context, nodeID string, status NodeStatus, progress float64) {
 	// Update graph nodes
 	for _, node := range e.graph.Nodes {
 		if node.ID == nodeID {
@@ -269,6 +281,13 @@ func (e *Executor) updateNodeStatus(nodeID string, status NodeStatus, progress f
 				}
 				e.hub.BroadcastEdgeUpdate(edge.Source, edge.Target, tension)
 			}
+		}
+	}
+	// Save monologue on node complete
+	if status == NodeStatusComplete && e.store != nil && len(e.monologueMessages) > 0 {
+		if err := e.store.SaveMonologueHistory(ctx, e.graph.ID, e.monologueMessages); err != nil {
+			// Log but don't fail
+			_ = err
 		}
 	}
 }
