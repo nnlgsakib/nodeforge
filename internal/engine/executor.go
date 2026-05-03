@@ -100,6 +100,10 @@ func (e *Executor) resolveChangedNodes() (map[string]bool, error) {
 // Forward-only progress: graph state is source of truth (FR1, FR52)
 // Story 2.7: Uses Merkle tree hashing to skip unchanged nodes during re-execution.
 func (e *Executor) Run(ctx context.Context) error {
+	if e.graph == nil {
+		return fmt.Errorf("executor: graph is nil")
+	}
+
 	// Story 2.7: Detect changed nodes using Merkle tree
 	changedNodes, err := e.resolveChangedNodes()
 	if err != nil {
@@ -108,6 +112,9 @@ func (e *Executor) Run(ctx context.Context) error {
 
 	for i := range e.graph.Nodes {
 		node := e.graph.Nodes[i]
+		if node == nil {
+			return fmt.Errorf("executor: node at index %d is nil", i)
+		}
 
 		// Story 2.7: Skip unchanged nodes that are already complete
 		if !changedNodes[node.ID] && node.Status == NodeStatusComplete {
@@ -140,7 +147,7 @@ func (e *Executor) Run(ctx context.Context) error {
 		maxRetries := 3
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			// Check for context cancellation
-			if ctx.Err() != nil {
+			if ctx != nil && ctx.Err() != nil {
 				e.updateNodeStatus(ctx, node.ID, NodeStatusFailed, 0.0)
 				return fmt.Errorf("node %s cancelled: %w", node.ID, ctx.Err())
 			}
@@ -196,6 +203,9 @@ func (e *Executor) executeNode(ctx context.Context, node *Node, contextStr strin
 
 	if e.llmProv == nil {
 		// Simulate execution for testing
+		if ctx == nil {
+			return fmt.Sprintf("Simulated output for node %s", node.ID), nil
+		}
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()

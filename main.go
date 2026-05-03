@@ -15,6 +15,6 @@ func main() {
 	nforge.SetDistFS(distFS)
 	if err := nforge.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		os.Exit(nforge.ExitCodeForError(err))
 	}
 }
