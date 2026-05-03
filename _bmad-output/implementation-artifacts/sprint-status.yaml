@@ -6,7 +6,7 @@
 # story_location: _bmad-output/implementation-artifacts
 
 generated: 2026-05-03T16:00:00+0600
-last_updated: 2026-05-03T21:00:00+0600
+last_updated: 2026-05-04T00:15:00+0600
 project: nfv2
 project_key: NOKEY
 tracking_system: file-system
@@ -62,16 +62,16 @@ development_status:
       2-7-incremental-execution-and-web-worker-offloading: done
       2-8-headless-cli-execution: done
       epic-2-retrospective: optional
-      epic-3: backlog
-      3-1-custom-nodetypes-and-edgetypes: backlog
-      3-2-chatpanel-and-monologuepanel: backlog
-      3-3-canvascontrols-and-sessionexplorer: backlog
-      3-4-skillmarketplace-and-accessibilitytoolbar: backlog
-      3-5-design-system-foundation: backlog
-      3-6-accessibility-high-contrast-rtl-and-screen-readers: backlog
-      3-7-ui-patterns-buttons-feedback-loading-modals: backlog
-      3-8-empty-states-search-filter-and-responsive-strategy: backlog
-      3-9-interactive-wires-and-novel-ux-patterns: backlog
+      epic-3: in-progress
+      3-1-custom-nodetypes-and-edgetypes: ready-for-dev
+      3-2-chatpanel-and-monologuepanel: ready-for-dev
+      3-3-canvascontrols-and-sessionexplorer: ready-for-dev
+      3-4-skillmarketplace-and-accessibilitytoolbar: ready-for-dev
+      3-5-design-system-foundation: ready-for-dev
+      3-6-accessibility-high-contrast-rtl-and-screen-readers: ready-for-dev
+      3-7-ui-patterns-buttons-feedback-loading-modals: ready-for-dev
+      3-8-empty-states-search-filter-and-responsive-strategy: ready-for-dev
+      3-9-interactive-wires-and-novel-ux-patterns: ready-for-dev
       epic-3-retrospective: optional
       epic-4: backlog
       4-1-session-creation-and-isolation: backlog

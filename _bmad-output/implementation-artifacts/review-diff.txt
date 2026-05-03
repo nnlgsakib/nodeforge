@@ -1,0 +1,500 @@
+STORY 2.7: Incremental Execution & Web Worker Offloading
+============================================================
+
+SPEC: _bmad-output/implementation-artifacts/2-7-incremental-execution-and-web-worker-offloading.md
+ACCEPTANCE CRITERIA:
+1. [AC1] Merkle tree hashing skips unchanged nodes, <2s for 100-node graph
+2. [AC2] Web Worker offloading for layout, 60fps, zero main-thread blocking
+3. [AC3] 100+ node graphs render without UI freeze
+4. [AC4] WebSocket state propagation <50ms, 5000+ concurrent connections
+
+============================================================
+MODIFIED FILES (git diff HEAD)
+============================================================
+
+diff --git a/cmd/nforge/serve.go b/cmd/nforge/serve.go
+index 2a63718..e65acaa 100644
+--- a/cmd/nforge/serve.go
++++ b/cmd/nforge/serve.go
+@@ -45,6 +45,7 @@ type wsHub struct {
+ 	store          *nfcontext.Store
+ 	statusChecker  *llm.StatusChecker
+ 	mu             sync.RWMutex
++	clientCount    atomic.Int64
+ }
+
+ // newWSHub creates a new WebSocket hub
+@@ -65,6 +66,7 @@ func (h *wsHub) run() {
+ 			h.mu.Lock()
+ 			h.clients[client] = true
+ 			h.mu.Unlock()
++			h.clientCount.Add(1)
+
+ 		case client := <-h.unregister:
+ 			h.mu.Lock()
+@@ -73,6 +75,7 @@ func (h *wsHub) run() {
+ 				close(client.send)
+ 			}
+ 			h.mu.Unlock()
++			h.clientCount.Add(-1)
+ 		case message := <-h.broadcast:
+ 			h.mu.RLock()
+@@ -137,6 +140,11 @@ func (h *wsHub) BroadcastRaw(data []byte) {
+ 	h.broadcast <- data
+ }
+
++// ClientCount returns the number of active WebSocket connections (Story 2.7)
++func (h *wsHub) ClientCount() int64 {
++	return h.clientCount.Load()
++}
++
+ var (
+ 	servePort   string
+ 	distFS      embed.FS
+@@ -419,7 +427,7 @@ func runServer() error {
+
+ 	// Metrics endpoint (Prometheus placeholder)
+ 	r.GET("/metrics", func(c *gin.Context) {
+-		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\n")
++		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\nws_connections_total %d\n", hub.ClientCount())
+ 	})
+
+ 	// Get monologue history for a session
+
+diff --git a/frontend/package.json b/frontend/package.json
+index 2557cd4..10a6eea 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -11,6 +11,7 @@
+   "dependencies": {
+     "@radix-ui/react-dialog": "^1.1.15",
+     "@xyflow/react": "^12.10.0",
++    "dagre": "^0.8.5",
+     "react": "^18.2.0",
+     "react-dom": "^18.2.0"
+   },
+@@ -18,6 +19,7 @@
+   "devDependencies": {
+     "@testing-library/jest-dom": "^6.9.1",
+     "@testing-library/react": "^15.0.7",
++    "@types/dagre": "^0.7.54",
+     "@types/react": "^18.2.53",
+     "@types/react-dom": "^18.2.18",
+     "@typescript-eslint/eslint-plugin": "^6.20.0",
+
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index c2f1ddb..488353b 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -19,6 +19,7 @@ import { MonologuePanel } from './components/panels/monologue-panel';
+ import { CanvasControls } from './components/canvas/CanvasControls';
+ import { useWebSocket } from './hooks/useWebSocket';
+ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
++import { useLayoutWorker } from './hooks/useLayoutWorker';
+
+ interface ProjectResult {
+   sessionId: string;
+@@ -76,21 +77,47 @@ export default function App() {
+     clearMonologueMessages,
+   } = useWebSocket();
+
+-  // Handle graph_update messages (Task 2.4, AC1)
++  // Web Worker layout offloading (Story 2.7)
++  const { runLayout } = useLayoutWorker();
++
++  // Offload layout to Web Worker when graph updates arrive (Story 2.7, AC2-3)
+   useEffect(() => {
+     if (graphUpdateQueue.length === 0) return;
+-    for (const item of graphUpdateQueue) {
+-      const data = item as { nodes?: unknown[]; edges?: unknown[] };
+-      if (data.nodes) {
+-        setNodes(data.nodes as any[]);
+-      }
+-      if (data.edges) {
+-        setEdges(data.edges as any[]);
+-      }
+-      setChatGenerating(false);
+-    }
++    const hasNewNodes = graphUpdateQueue.some(
++      (item) => (item as { nodes?: unknown[] })?.nodes && (item as { nodes?: unknown[] })!.nodes!.length > 0
++    );
++    if (!hasNewNodes) return;
++
++    // Extract nodes and edges from the last graph update
++    const lastUpdate = graphUpdateQueue[graphUpdateQueue.length - 1] as { nodes?: unknown[]; edges?: unknown[] };
++    const rawNodes = (lastUpdate.nodes || []) as Array<{ id: string }>;
++    const rawEdges = (lastUpdate.edges || []) as Array<{ source: string; target: string }>;
++
++    runLayout(rawNodes, rawEdges)
++      .then((positions) => {
++        requestAnimationFrame(() => {
++          setNodes((nds) =>
++            nds.map((node) => {
++              if (positions[node.id]) {
++                return { ...node, position: positions[node.id] };
++              }
++              return node;
++            })
++          );
++          // Also update edges from the graph update
++          if (rawEdges.length > 0) {
++            setEdges(rawEdges as any[]);
++          }
++          setChatGenerating(false);
++        });
++      })
++      .catch((err) => {
++        console.warn('Layout worker failed, falling back:', err);
++        setChatGenerating(false);
++      });
++
+     clearGraphUpdates();
+-  }, [graphUpdateQueue, setNodes, setEdges, clearGraphUpdates]);
++  }, [graphUpdateQueue, runLayout, clearGraphUpdates]);
+
+   // Handle node_update messages (Task 5.4, AC2)
+   useEffect(() => {
+
+diff --git a/internal/engine/executor.go b/internal/engine/executor.go
+index 5668602..e851376 100644
+--- a/internal/engine/executor.go
++++ b/internal/engine/executor.go
+@@ -57,13 +57,62 @@ func (e *Executor) SetSwarm(swarm *llm.Swarm, config *llm.SwarmConfig) {
+ 	}
+ }
+
++// resolveChangedNodes uses Merkle tree hashing to determine which nodes need re-execution.
++// Returns a set of node IDs that have changed since the last execution.
++func (e *Executor) resolveChangedNodes() (map[string]bool, error) {
++	changed := make(map[string]bool)
++
++	var oldHash string
++	var oldNodeHashes map[string]string
++	if e.graph.Metadata != nil {
++		oldHash = e.graph.Metadata.MerkleRoot
++		oldNodeHashes = e.graph.Metadata.NodeHashes
++	}
++
++	ids, err := detectChangedNodes(oldHash, oldNodeHashes, e.graph.Nodes, e.graph.Edges)
++	if err != nil {
++		return nil, err
++	}
++	for _, id := range ids {
++		changed[id] = true
++	}
++
++	// Update the graph metadata with the new hash after computing
++	if e.graph.Metadata == nil {
++		e.graph.Metadata = &GraphMetadata{
++			NodeHashes: make(map[string]string),
++		}
++	}
++	newRoot := computeGraphHash(e.graph.Nodes, e.graph.Edges)
++	e.graph.Metadata.MerkleRoot = newRoot
++	for _, node := range e.graph.Nodes {
++		e.graph.Metadata.NodeHashes[node.ID] = hashNode(node)
++	}
++
++	return changed, nil
++}
++
+ // Run executes the graph sequentially, node by node
+ // Each node runs until its acceptance criteria are met (FR3)
+ // Forward-only progress: graph state is source of truth (FR1, FR52)
++// Story 2.7: Uses Merkle tree hashing to skip unchanged nodes during re-execution.
+ func (e *Executor) Run(ctx context.Context) error {
++	// Story 2.7: Detect changed nodes using Merkle tree
++	changedNodes, err := e.resolveChangedNodes()
++	if err != nil {
++		return fmt.Errorf("merkle change detection failed: %w", err)
++	}
++
+ 	for i := range e.graph.Nodes {
+ 		node := e.graph.Nodes[i]
+
++		// Story 2.7: Skip nodes whose hash matches previous execution
++		if !changedNodes[node.ID] {
++			if node.Status == NodeStatusComplete {
++				continue
++			}
++		}
++
+ 		// Skip non-pending nodes (idempotent)
+ 		if node.Status != NodeStatusPending && node.Status != NodeStatusFailed {
+ 			continue
+diff --git a/internal/engine/graph.go b/internal/engine/graph.go
+index 96ab9a7..71a972f 100644
+--- a/internal/engine/graph.go
++++ b/internal/engine/graph.go
+@@ -56,14 +56,23 @@ type Edge struct {
+ 	Tension float64 `json:"tension,omitempty"`
+ }
+
++// GraphMetadata stores metadata about a graph execution (Story 2.7)
++type GraphMetadata struct {
++	ID         string
++	CreatedAt  time.Time
++	MerkleRoot string            `json:"merkleRoot"`
++	NodeHashes map[string]string `json:"nodeHashes"`
++}
++
+ // Graph represents a node graph
+ type Graph struct {
+-	ID        string  `json:"id"`
+-	Goal      string  `json:"goal"`
+-	Nodes     []*Node `json:"nodes"`
+-	Edges     []*Edge `json:"edges"`
+-	Status    string  `json:"status"`
+-	CreatedAt string  `json:"createdAt"`
++	ID        string         `json:"id"`
++	Goal      string         `json:"goal"`
++	Nodes     []*Node        `json:"nodes"`
++	Edges     []*Edge        `json:"edges"`
++	Status    string         `json:"status"`
++	CreatedAt string         `json:"createdAt"`
++	Metadata  *GraphMetadata `json:"metadata,omitempty"`
+ }
+
+ // Generator creates graphs from goals
+
+============================================================
+NEW FILES
+============================================================
+
+--- /dev/null
++++ b/internal/engine/merkle.go
+@@ -0,0 +1,112 @@
++package engine
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"fmt"
++	"sort"
++	"strings"
++)
++
++// hashNode computes a SHA-256 hash for a single node based on its type, config, inputs, and outputs.
++func hashNode(node *Node) string {
++	var parts []string
++	parts = append(parts, string(node.Type))
++	parts = append(parts, node.Label)
++	parts = append(parts, node.Output)
++
++	sortedAC := make([]string, len(node.AcceptanceCriteria))
++	copy(sortedAC, node.AcceptanceCriteria)
++	sort.Strings(sortedAC)
++	parts = append(parts, sortedAC...)
++
++	if node.Metadata != nil {
++		keys := make([]string, 0, len(node.Metadata))
++		for k := range node.Metadata {
++			keys = append(keys, k)
++		}
++		sort.Strings(keys)
++		for _, k := range keys {
++			parts = append(parts, fmt.Sprintf("%s=%v", k, node.Metadata[k]))
++		}
++	}
++
++	joined := strings.Join(parts, "|")
++	h := sha256.Sum256([]byte(joined))
++	return hex.EncodeToString(h[:])
++}
++
++// hashEdge computes a SHA-256 hash for an edge.
++func hashEdge(edge *Edge) string {
++	joined := fmt.Sprintf("%s|%s|%s", edge.Source, edge.Target, edge.Type)
++	h := sha256.Sum256([]byte(joined))
++	return hex.EncodeToString(h[:])
++}
++
++// computeGraphHash computes the Merkle root hash for the entire graph.
++func computeGraphHash(nodes []*Node, edges []*Edge) string {
++	var nodeHashes []string
++	for _, node := range nodes {
++		nodeHashes = append(nodeHashes, hashNode(node))
++	}
++
++	var edgeHashes []string
++	for _, edge := range edges {
++		edgeHashes = append(edgeHashes, hashEdge(edge))
++	}
++
++	sort.Strings(nodeHashes)
++	sort.Strings(edgeHashes)
++
++	combined := strings.Join(nodeHashes, "") + "|" + strings.Join(edgeHashes, "")
++	h := sha256.Sum256([]byte(combined))
++	return hex.EncodeToString(h[:])
++}
++
++// detectChangedNodes compares the old Merkle root hash against the current graph state.
++func detectChangedNodes(oldHash string, oldNodeHashes map[string]string, nodes []*Node, edges []*Edge) ([]string, error) {
++	if oldHash == "" {
++		changed := make([]string, 0, len(nodes))
++		for _, node := range nodes {
++			changed = append(changed, node.ID)
++		}
++		return changed, nil
++	}
++
++	newNodeHashes := make(map[string]string, len(nodes))
++	for _, node := range nodes {
++		newNodeHashes[node.ID] = hashNode(node)
++	}
++
++	var changed []string
++	for _, node := range nodes {
++		if oldNodeHashes == nil || oldNodeHashes[node.ID] != newNodeHashes[node.ID] {
++			changed = append(changed, node.ID)
++		}
++	}
++
++	newGraphHash := computeGraphHash(nodes, edges)
++	if newGraphHash != oldHash {
++		if len(changed) == 0 {
++			for _, node := range nodes {
++				changed = append(changed, node.ID)
++			}
++		}
++	}
++
++	return changed, nil
++}
+
+--- /dev/null
++++ b/internal/engine/merkle_test.go
+@@ -0,0 +1,266 @@
++package engine
++
++import (
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func TestHashNodeConsistency(t *testing.T) { ... }
++func TestHashNodeDifferentNodes(t *testing.T) { ... }
++func TestHashNodeACOrderIndependence(t *testing.T) { ... }
++func TestHashEdge(t *testing.T) { ... }
++func TestComputeGraphHash(t *testing.T) { ... }
++func TestComputeGraphHashEmpty(t *testing.T) { ... }
++func TestDetectChangedNodesNoOldHash(t *testing.T) { ... }
++func TestDetectChangedNodesAllUnchanged(t *testing.T) { ... }
++func TestDetectChangedNodesOneChanged(t *testing.T) { ... }
++func TestDetectChangedNodesEdgeChange(t *testing.T) { ... }
++func TestDetectChangedNodesSingleNodeGraph(t *testing.T) { ... }
++func TestDetectChangedNodesNilOldNodeHashes(t *testing.T) { ... }
++func BenchmarkMerkleReexecution100Nodes(b *testing.B) { ... }
+
+--- /dev/null
++++ b/frontend/src/workers/layout.worker.ts
+@@ -0,0 +1,92 @@
++import dagre from 'dagre';
++
++interface LayoutNode { id: string; width?: number; height?: number; }
++interface LayoutEdge { source: string; target: string; }
++interface LayoutRequest {
++  type: 'layout';
++  nodes: LayoutNode[];
++  edges: LayoutEdge[];
++  config?: { rankdir?: 'TB' | 'BT' | 'LR' | 'RL'; nodeWidth?: number; nodeHeight?: number; ranksep?: number; nodesep?: number; }
++}
++interface LayoutResponse { type: 'layout-done'; positions: Record<string, { x: number; y: number }>; }
++interface LayoutErrorResponse { type: 'layout-error'; error: string; }
++
++const defaultNodeWidth = 200;
++const defaultNodeHeight = 80;
++
++self.onmessage = (event: MessageEvent<LayoutRequest>) => {
++  const { type, nodes, edges, config } = event.data;
++  if (type !== 'layout') return;
++
++  try {
++    const g = new dagre.graphlib.Graph();
++    g.setGraph({ rankdir: config?.rankdir ?? 'TB', ranksep: config?.ranksep ?? 50, nodesep: config?.nodesep ?? 50 });
++    g.setDefaultEdgeLabel(() => ({}));
++
++    const nodeWidth = config?.nodeWidth ?? defaultNodeWidth;
++    const nodeHeight = config?.nodeHeight ?? defaultNodeHeight;
++    for (const node of nodes) { g.setNode(node.id, { width: nodeWidth, height: nodeHeight }); }
++    for (const edge of edges) { g.setEdge(edge.source, edge.target); }
++
++    dagre.layout(g);
++
++    const positions: Record<string, { x: number; y: number }> = {};
++    for (const nodeId of g.nodes()) {
++      const node = g.node(nodeId);
++      positions[nodeId] = { x: node.x, y: node.y };
++    }
++
++    self.postMessage({ type: 'layout-done', positions });
++  } catch (err) {
++    self.postMessage({ type: 'layout-error', error: err instanceof Error ? err.message : String(err) });
++  }
++};
+
+--- /dev/null
++++ b/frontend/src/workers/layout.worker.test.ts
+@@ -0,0 +1,75 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++import dagre from 'dagre';
++
++describe('layout worker logic', () => {
++  function runLayout(nodes: { id: string }[], edges: { source: string; target: string }[]) {
++    // Inlines the dagre layout logic for testing
++    const g = new dagre.graphlib.Graph();
++    g.setGraph({ rankdir: 'TB', ranksep: 50, nodesep: 50 });
++    g.setDefaultEdgeLabel(() => ({}));
++    for (const node of nodes) { g.setNode(node.id, { width: 200, height: 80 }); }
++    for (const edge of edges) { g.setEdge(edge.source, edge.target); }
++    dagre.layout(g);
++    const positions: Record<string, { x: number; y: number }> = {};
++    for (const nodeId of g.nodes()) { const node = g.node(nodeId); positions[nodeId] = { x: node.x, y: node.y }; }
++    return positions;
++  }
++
++  it('should calculate positions for all nodes', () => { ... });
++  it('should place nodes in top-to-bottom order for chain graph', () => { ... });
++  it('should handle empty graph', () => { ... });
++  it('should handle single node', () => { ... });
++  it('should handle disconnected nodes', () => { ... });
++});
+
+--- /dev/null
++++ b/frontend/src/hooks/useLayoutWorker.ts
+@@ -0,0 +1,63 @@
++import { useCallback, useRef } from 'react';
++
++interface LayoutNode { id: string; width?: number; height?: number; }
++interface LayoutEdge { source: string; target: string; }
++interface LayoutConfig { rankdir?: 'TB' | 'BT' | 'LR' | 'RL'; nodeWidth?: number; nodeHeight?: number; ranksep?: number; nodesep?: number; }
++interface UseLayoutWorkerReturn { runLayout: (nodes: LayoutNode[], edges: LayoutEdge[], config?: LayoutConfig) => Promise<Record<string, { x: number; y: number }>>; }
++
++export function useLayoutWorker(): UseLayoutWorkerReturn {
++  const workerRef = useRef<Worker | null>(null);
++  const getWorker = useCallback(() => {
++    if (!workerRef.current) {
++      workerRef.current = new Worker(new URL('../workers/layout.worker.ts', import.meta.url), { type: 'module' });
++    }
++    return workerRef.current;
++  }, []);
++
++  const runLayout = useCallback((nodes: LayoutNode[], edges: LayoutEdge[], config?: LayoutConfig) => {
++    return new Promise<Record<string, { x: number; y: number }>>((resolve, reject) => {
++      const worker = getWorker();
++      const handler = (event: MessageEvent) => {
++        worker.removeEventListener('message', handler);
++        if (event.data.type === 'layout-done') { resolve(event.data.positions); }
++        else if (event.data.type === 'layout-error') { reject(new Error(event.data.error)); }
++      };
++      worker.addEventListener('message', handler);
++      worker.postMessage({ type: 'layout', nodes, edges, config });
++    });
++  }, [getWorker]);
++
++  return { runLayout };
++}
