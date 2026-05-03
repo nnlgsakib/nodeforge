@@ -932,3 +932,104 @@ So that NodeForge is reliable, accessible, and extensible.
 **And** 5+ LLM providers supported via pluggable interface — new providers added via config, no code changes (NFR-25)
 **And** gRPC plugins load dynamically, sandboxed in separate processes with resource limits (NFR-26)
 **And** MCP server exposes full session lifecycle for Claude Desktop/Cursor orchestration (NFR-27, FR44)
+
+## Epic 7: Documentation & Developer Experience
+
+User can access comprehensive documentation, README, API docs, and developer guides.
+
+**User Value:** "I can understand and contribute to NodeForge with clear, comprehensive documentation."
+
+**FRs covered:** N/A (documentation epic)
+**Dependencies:** Epics 1-6 (needs working system to document)
+**Implementation Notes:** README.md, API documentation (Swagger/OpenAPI), architecture docs, developer guides, Storybook for UI components, CLI help system.
+
+### Story 7.1: Comprehensive README & Project Documentation
+
+As a developer or user,
+I want a comprehensive README.md with project overview, quick start guide, feature list, and contribution guidelines,
+So that I can quickly understand and start using NodeForge.
+
+**Acceptance Criteria:**
+
+**Given** the project has reached a stable state
+**When** a user visits the repository or reads README.md
+**Then** they see: project title, tagline, badges (build status, Go version, license), feature list with emojis
+**And** quick start section: `go install`, `nforge serve`, `nforge new <project>`, open browser
+**And** complete feature matrix table linking to epic/story documentation
+**And** architecture overview diagram (text-based or link to detailed docs)
+**And** contribution guidelines: how to run tests, code conventions, PR process
+
+### Story 7.2: API Documentation (Swagger/OpenAPI)
+
+As a developer,
+I want auto-generated Swagger/OpenAPI documentation for the REST API,
+So that I can understand and integrate with the NodeForge API.
+
+**Acceptance Criteria:**
+
+**Given** the REST API is implemented with Gin
+**When** a developer visits `/swagger/index.html` or `/docs/api`
+**Then** they see interactive Swagger UI with all endpoints documented: request/response schemas, auth requirements, example requests
+**And** OpenAPI spec is auto-generated from code comments or annotations
+**And** WebSocket API documented separately with message type definitions (graph_update, node_update, llm_chunk, monologue, connected)
+**And** Postman collection export available at `/docs/postman.json`
+
+### Story 7.3: Architecture & Developer Guides
+
+As a contributor,
+I want detailed architecture documentation and developer guides,
+So that I can understand the codebase and contribute effectively.
+
+**Acceptance Criteria:**
+
+**Given** the codebase has stable architecture
+**When** a developer reads `docs/architecture.md`
+**Then** they see: system overview, backend (Go) architecture, frontend (React) architecture, data flow diagrams
+**And** `docs/developer-guide.md` covers: local development setup, testing strategy, debugging tips, adding new LLM providers, creating custom skills
+**And** `docs/context-engine.md` explains the Smart Context Engine (BadgerDB knowledge graph, token reduction, context assembly)
+**And** `docs/session-management.md` covers session lifecycle, workspace isolation, forking, time-travel debug
+
+### Story 7.4: UI Component Storybook & Design System Docs
+
+As a frontend developer,
+I want Storybook or equivalent for UI components with design system documentation,
+So that I can build consistent UI and understand available components.
+
+**Acceptance Criteria:**
+
+**Given** the React frontend has stable component library
+**When** a developer runs `cd frontend && npm run storybook`
+**Then** they see all UI components documented: NodeTypes, EdgeTypes, Panels (ChatPanel, MonologuePanel, SessionExplorer), UI patterns (buttons, modals, toasts)
+**And** design system docs: Tailwind config, color palette, typography (JetBrains Mono), spacing, accessibility notes
+**And** each component shows: props API, usage examples, accessibility features (ARIA attributes, keyboard nav)
+**And** visual regression tests for components (optional, if Storybook addon available)
+
+### Story 7.5: CLI Documentation & Help System
+
+As a user,
+I want comprehensive CLI documentation with examples for every command and flag,
+So that I can use the CLI effectively without guessing.
+
+**Acceptance Criteria:**
+
+**Given** the CLI uses Cobra framework
+**When** the user runs `nforge --help` or `nforge <command> --help`
+**Then** they see: command description, usage examples, available flags with defaults, related commands
+**And** `docs/cli-reference.md` provides: full command tree, exit codes, environment variables (NFORGE_VERBOSE, NFORGE_CONFIG), configuration file format
+**And** interactive examples: `nforge config set llm.openai-key <key>`, `nforge session resume <id>`, `nforge skill install <name>`
+**And** man pages or equivalent offline docs generated for power users
+
+### Story 7.6: Video Tutorials & Interactive Demos
+
+As a new user,
+I want video tutorials and interactive demos showing key workflows,
+So that I can learn NodeForge visually and try it live.
+
+**Acceptance Criteria:**
+
+**Given** the system has stable core features
+**When** a new user visits the documentation site or README
+**Then** they see embedded video tutorials: "5-minute quickstart", "Creating your first goal", "Forking sessions", "Using the Skill Marketplace"
+**And** interactive demo (if feasible): live sandbox at `demo.nodeforge.io` where users can try NodeForge in browser (read-only mode)
+**And** GIF/screencast recordings in documentation: showing chat-to-graph flow, canvas interactions, monologue panel, session forking
+**And** links to community resources: Discord/Slack, GitHub Discussions, Stack Overflow tag

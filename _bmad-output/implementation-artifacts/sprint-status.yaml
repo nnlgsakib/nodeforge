@@ -6,7 +6,7 @@
 # story_location: _bmad-output/implementation-artifacts
 
 generated: 2026-05-03T16:00:00+0600
-last_updated: 2026-05-03T16:00:00+0600
+last_updated: 2026-05-03T17:45:00+0600
 project: nfv2
 project_key: NOKEY
 tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   2-3-llm-inner-monologue-panel: done
   2-4-prompt-optimization-and-token-budget: done
   2-5-smart-context-engine-knowledge-graph: done
-  2-6-speculative-execution-within-nodes: ready-for-dev
+  2-6-speculative-execution-within-nodes: done
   2-7-incremental-execution-and-web-worker-offloading: ready-for-dev
   2-8-headless-cli-execution: ready-for-dev
   epic-2-retrospective: optional

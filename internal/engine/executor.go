@@ -28,6 +28,8 @@ type Executor struct {
 	currentNodeID     string
 	contextAssembler  *nfContext.ContextAssembler // Context assembly for LLM calls (Task 5)
 	specGen           *nfContext.SpecGenerator    // Auto-spec generation (AC3)
+	swarm             *llm.Swarm                  // Speculative execution within nodes (Story 2.6)
+	swarmConfig       *llm.SwarmConfig            // Speculative execution configuration
 }
 
 // NewExecutor creates a new executor for the given graph
@@ -38,12 +40,21 @@ func NewExecutor(graph *Graph, llmProv llm.LLMProvider, store *nfContext.Store, 
 		store:            store,
 		contextAssembler: contextAssembler,
 		specGen:          specGen,
+		swarmConfig:      llm.DefaultSwarmConfig(),
 	}
 }
 
 // SetHub sets the WebSocket hub for real-time updates (Task 5.4)
 func (e *Executor) SetHub(hub NodeUpdateBroadcaster) {
 	e.hub = hub
+}
+
+// SetSwarm configures speculative execution within nodes (Story 2.6)
+func (e *Executor) SetSwarm(swarm *llm.Swarm, config *llm.SwarmConfig) {
+	e.swarm = swarm
+	if config != nil {
+		e.swarmConfig = config
+	}
 }
 
 // Run executes the graph sequentially, node by node
@@ -84,7 +95,7 @@ func (e *Executor) Run(ctx context.Context) error {
 				return fmt.Errorf("node %s cancelled: %w", node.ID, ctx.Err())
 			}
 
-			// Execute node via LLM
+			// Execute node via LLM (speculative or sequential)
 			output, err := e.executeNode(ctx, node, contextStr)
 			if err != nil {
 				if attempt == maxRetries-1 {
@@ -127,7 +138,7 @@ func (e *Executor) Run(ctx context.Context) error {
 	return nil
 }
 
-// executeNode runs a single node via LLM
+// executeNode runs a single node via LLM (with optional speculative execution)
 func (e *Executor) executeNode(ctx context.Context, node *Node, contextStr string) (string, error) {
 	// Reset monologue buffer for this node
 	e.currentNodeID = node.ID
@@ -153,15 +164,33 @@ Acceptance Criteria:
 
 Provide the output.`, node.Type, node.Label, contextStr, node.AcceptanceCriteria)
 
-	// Stream LLM response and collect output
 	messages := []llm.Message{
 		{Role: "system", Content: "You are a node executor. Execute the node and provide output."},
 		{Role: "user", Content: prompt},
 	}
 
+	// Check if speculative execution is enabled for this node type
+	useSpeculative := e.swarmConfig != nil && e.swarmConfig.Enabled && e.swarm != nil
+
+	if useSpeculative {
+		// Broadcast speculative execution start
+		e.broadcastSpeculativeStart(node.ID)
+
+		// Run speculative execution: multiple parallel attempts, best result wins
+		result, err := e.swarm.Execute(ctx, node.ID, messages, node.AcceptanceCriteria)
+		if err != nil {
+			return "", fmt.Errorf("speculative execution failed: %w", err)
+		}
+
+		// Stream the winning result to WebSocket
+		e.streamLLMResponse(ctx, result.Output)
+
+		return result.Output, nil
+	}
+
+	// Fall back to single execution (original behavior)
 	ch, err := e.llmProv.Chat(ctx, messages)
 	if err != nil {
-		// Fallback to simulated output on error
 		return "", fmt.Errorf("LLM chat failed: %w", err)
 	}
 
@@ -182,6 +211,25 @@ Provide the output.`, node.Type, node.Label, contextStr, node.AcceptanceCriteria
 			e.streamLLMResponse(ctx, token)
 		}
 	}
+}
+
+// broadcastSpeculativeStart sends WebSocket update for speculative execution start
+func (e *Executor) broadcastSpeculativeStart(nodeID string) {
+	if e.hub == nil {
+		return
+	}
+	maxAttempts := 1
+	if e.swarmConfig != nil {
+		maxAttempts = e.swarmConfig.MaxAttempts
+	}
+	data, _ := json.Marshal(map[string]interface{}{
+		"type":        "node_update",
+		"nodeId":      nodeID,
+		"status":      "running",
+		"speculative": true,
+		"attempts":    maxAttempts,
+	})
+	e.hub.BroadcastRaw(data)
 }
 
 // buildContext builds context string from upstream node outputs (FR18)
