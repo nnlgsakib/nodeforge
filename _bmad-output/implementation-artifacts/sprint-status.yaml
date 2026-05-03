@@ -57,7 +57,7 @@ development_status:
   2-2-llm-provider-abstraction-and-race-mode: done
   2-3-llm-inner-monologue-panel: done
   2-4-prompt-optimization-and-token-budget: done
-  2-5-smart-context-engine-knowledge-graph: in-progress
+  2-5-smart-context-engine-knowledge-graph: done
   2-6-speculative-execution-within-nodes: ready-for-dev
   2-7-incremental-execution-and-web-worker-offloading: ready-for-dev
   2-8-headless-cli-execution: ready-for-dev

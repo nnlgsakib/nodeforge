@@ -1,6 +1,6 @@
 # Story 2.5: Smart Context Engine (Knowledge Graph)
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -197,11 +197,12 @@ Implemented all tasks per story requirements:
 
 ### Completion Notes
 
-All acceptance criteria met:
+All acceptance criteria met (updated after code review):
 - AC1: Knowledge graph implemented with BadgerDB, context assembly <100ms, 30%+ token reduction vs naive prompts
-- AC2: Node memory reuse via NodeMemory.StoreMemory/GetMemory (FR18)
-- AC3: Auto-spec generation via SpecGenerator.GenerateSpec, system references (FR19)
-- AC4: Context overflow handled via GraphSplitter.SplitGraphIfNeeded, sub-graph token estimation
+- AC2: Node memory reuse via NodeMemory.StoreMemory/GetMemory, injected via InjectMemoryIntoPrompt (FR18)
+- AC3: Auto-spec generation integrated into executor - GenerateSpec/AddSystemReferences called after node completion (FR19)
+- AC4: Context overflow handled via GraphSplitter.SplitGraphIfNeeded integrated into ContextAssembler, sub-graph token estimation with populated Edges (FR20)
+- Task 5: LLM integration complete - ContextAssembler.AssembleContext called in executor, GraphSplitter initialized in NewContextAssembler
 
 All unit tests passing (20 tests), no regressions.
 
