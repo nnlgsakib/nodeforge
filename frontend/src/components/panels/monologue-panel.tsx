@@ -164,15 +164,28 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
               {isStreaming && (
                 <span
                   style={{
-                    display: 'inline-block',
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: 'var(--accent)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     marginLeft: '8px',
-                    animation: 'pulse 1.5s infinite',
+                    fontSize: '11px',
+                    color: '#ef4444',
+                    fontWeight: 500,
                   }}
-                />
+                >
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: '#ef4444',
+                      animation: 'pulse-recording 1.5s infinite',
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span aria-label="Recording in progress">REC</span>
+                </span>
               )}
             </h3>
             <div style={{ display: 'flex', gap: '8px' }}>

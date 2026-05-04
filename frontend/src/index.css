@@ -334,6 +334,11 @@
     50% { opacity: 0.3; }
   }
 
+  @keyframes pulse-recording {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
   @keyframes slide-in {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
@@ -361,6 +366,18 @@
 
   @keyframes edge-dash {
     to { stroke-dashoffset: -20; }
+  }
+
+  /* Edge flow animation — used by ActiveEdgeComponent */
+  @keyframes flow {
+    to { stroke-dashoffset: -18; }
+  }
+
+  /* Edge pulse on completion — used by SuccessEdgeComponent */
+  @keyframes pulse-success {
+    0% { stroke-width: 2; opacity: 1; }
+    50% { stroke-width: 4; opacity: 0.8; }
+    100% { stroke-width: 2; opacity: 1; }
   }
 
   .generating-ellipsis::after {

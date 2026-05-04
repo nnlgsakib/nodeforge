@@ -27,6 +27,11 @@ interface LayoutRequest {
 interface LayoutResponse {
   type: 'layout-done';
   positions: Record<string, { x: number; y: number }>;
+  metrics?: {
+    layoutTimeMs: number;
+    nodeCount: number;
+    edgeCount: number;
+  };
 }
 
 interface LayoutErrorResponse {
@@ -45,11 +50,18 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
   }
 
   try {
+    const startTime = performance.now();
     const g = new dagre.graphlib.Graph();
+
+    // Optimize for large graphs: reduce ranksep/nodesep for 100+ nodes to tighten layout
+    const isLargeGraph = nodes.length > 100;
+    const ranksep = config?.ranksep ?? (isLargeGraph ? 30 : 50);
+    const nodesep = config?.nodesep ?? (isLargeGraph ? 30 : 50);
+
     g.setGraph({
       rankdir: config?.rankdir ?? 'TB',
-      ranksep: config?.ranksep ?? 50,
-      nodesep: config?.nodesep ?? 50,
+      ranksep,
+      nodesep,
     });
 
     g.setDefaultEdgeLabel(() => ({}));
@@ -64,7 +76,10 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
         continue;
       }
       seenNodes.add(node.id);
-      g.setNode(node.id, { width: node.width ?? nodeWidth, height: node.height ?? nodeHeight });
+      // Simplify node dimensions for large graphs to reduce layout computation
+      const width = isLargeGraph ? Math.min(node.width ?? nodeWidth, 180) : (node.width ?? nodeWidth);
+      const height = isLargeGraph ? Math.min(node.height ?? nodeHeight, 60) : (node.height ?? nodeHeight);
+      g.setNode(node.id, { width, height });
     }
 
     // Add edges
@@ -74,6 +89,8 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
 
     // Run layout
     dagre.layout(g);
+
+    const layoutTimeMS = performance.now() - startTime;
 
     // Extract positions
     const positions: Record<string, { x: number; y: number }> = {};
@@ -85,6 +102,11 @@ self.onmessage = (event: MessageEvent<LayoutRequest>) => {
     const response: LayoutResponse = {
       type: 'layout-done',
       positions,
+      metrics: {
+        layoutTimeMs: Math.round(layoutTimeMS * 100) / 100,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+      },
     };
     self.postMessage(response);
   } catch (err) {

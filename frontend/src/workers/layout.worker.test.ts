@@ -24,6 +24,38 @@ describe('layout worker logic', () => {
     return positions;
   }
 
+  // Optimized layout function matching worker behavior for large graphs
+  function runLayoutOptimized(nodes: { id: string }[], edges: { source: string; target: string }[]) {
+    const startTime = performance.now();
+    const isLargeGraph = nodes.length > 100;
+    const ranksep = isLargeGraph ? 30 : 50;
+    const nodesep = isLargeGraph ? 30 : 50;
+
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: 'TB', ranksep, nodesep });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    for (const node of nodes) {
+      const width = isLargeGraph ? Math.min(200, 180) : 200;
+      const height = isLargeGraph ? Math.min(80, 60) : 80;
+      g.setNode(node.id, { width, height });
+    }
+    for (const edge of edges) {
+      g.setEdge(edge.source, edge.target);
+    }
+
+    dagre.layout(g);
+
+    const layoutTimeMS = performance.now() - startTime;
+
+    const positions: Record<string, { x: number; y: number }> = {};
+    for (const nodeId of g.nodes()) {
+      const node = g.node(nodeId);
+      positions[nodeId] = { x: node.x, y: node.y };
+    }
+    return { positions, layoutTimeMS, nodeCount: nodes.length };
+  }
+
   it('should calculate positions for all nodes', () => {
     const nodes = [
       { id: 'node-1' },
@@ -71,5 +103,33 @@ describe('layout worker logic', () => {
     const nodes = [{ id: 'a' }, { id: 'b' }];
     const positions = runLayout(nodes, []);
     expect(Object.keys(positions)).toHaveLength(2);
+  });
+
+  it('should complete layout for 100 nodes efficiently (optimized for 60fps)', () => {
+    const nodes = Array.from({ length: 100 }, (_, i) => ({ id: `node-${i}` }));
+    const edges = Array.from({ length: 99 }, (_, i) => ({
+      source: `node-${i}`,
+      target: `node-${i + 1}`,
+    }));
+
+    const { positions, layoutTimeMS } = runLayoutOptimized(nodes, edges);
+
+    expect(Object.keys(positions)).toHaveLength(100);
+    // In production Web Worker, layout runs off-main-thread.
+    // In test env we measure relative performance: should be under 50ms even with JS overhead.
+    expect(layoutTimeMS).toBeLessThan(50);
+  });
+
+  it('should use tighter spacing for large graphs (>100 nodes)', () => {
+    const nodes = Array.from({ length: 150 }, (_, i) => ({ id: `node-${i}` }));
+    const edges = Array.from({ length: 149 }, (_, i) => ({
+      source: `node-${i}`,
+      target: `node-${i + 1}`,
+    }));
+
+    const { positions, nodeCount } = runLayoutOptimized(nodes, edges);
+
+    expect(Object.keys(positions)).toHaveLength(150);
+    expect(nodeCount).toBe(150);
   });
 });

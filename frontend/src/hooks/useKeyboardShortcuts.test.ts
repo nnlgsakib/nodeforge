@@ -54,4 +54,69 @@ describe('useKeyboardShortcuts', () => {
     window.dispatchEvent(event);
     expect(handler).toHaveBeenCalled();
   });
+
+  it('calls onTogglePause when p key pressed', () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockHandlers,
+        isPaused: false,
+      })
+    );
+    const event = new KeyboardEvent('keydown', { key: 'p' });
+    window.dispatchEvent(event);
+    expect(mockHandlers.onTogglePause).toHaveBeenCalledWith(true);
+    expect(mockHandlers.sendMessage).toHaveBeenCalledWith({ type: 'pause', paused: true });
+  });
+
+  it('calls onTogglePause when space key pressed', () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockHandlers,
+        isPaused: false,
+      })
+    );
+    const event = new KeyboardEvent('keydown', { key: ' ' });
+    window.dispatchEvent(event);
+    expect(mockHandlers.onTogglePause).toHaveBeenCalledWith(true);
+    expect(mockHandlers.sendMessage).toHaveBeenCalledWith({ type: 'pause', paused: true });
+  });
+
+  it('calls onSkipNode when s key pressed', () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockHandlers,
+        isPaused: false,
+      })
+    );
+    const event = new KeyboardEvent('keydown', { key: 's' });
+    window.dispatchEvent(event);
+    expect(mockHandlers.onSkipNode).toHaveBeenCalled();
+    expect(mockHandlers.sendMessage).toHaveBeenCalledWith({ type: 'skip_node' });
+  });
+
+  it('calls onForkSession when f key pressed', () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockHandlers,
+        isPaused: false,
+      })
+    );
+    const event = new KeyboardEvent('keydown', { key: 'f' });
+    window.dispatchEvent(event);
+    expect(mockHandlers.onForkSession).toHaveBeenCalled();
+    expect(mockHandlers.sendMessage).toHaveBeenCalledWith({ type: 'fork_session' });
+  });
+
+  it('calls onRetryNode when r key pressed', () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockHandlers,
+        isPaused: false,
+      })
+    );
+    const event = new KeyboardEvent('keydown', { key: 'r' });
+    window.dispatchEvent(event);
+    expect(mockHandlers.onRetryNode).toHaveBeenCalled();
+    expect(mockHandlers.sendMessage).toHaveBeenCalledWith({ type: 'retry_node' });
+  });
 });

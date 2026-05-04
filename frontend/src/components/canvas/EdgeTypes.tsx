@@ -290,11 +290,16 @@ const DefaultEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
   );
 };
 
-// Active Edge - #06b6d4, 3px stroke, animated dash flow
+// Active Edge - #06b6d4, 3px stroke, animated dash flow with heartbeat pulse
 const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
   const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
   const { isHighContrast: hc } = useTheme();
+
+  // Heartbeat: faster dash animation based on tension (higher tension = faster pulse)
+  const rawTension = (data as AppEdgeData & { tension?: number })?.tension ?? 0;
+  const tension = Math.min(1, Math.max(0, rawTension));
+  const heartbeatDuration = Math.max(0.3, 1 - tension * 0.7); // 1s at tension=0, 0.3s at tension=1
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
@@ -312,18 +317,22 @@ const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: hc ? HC_COLORS.active : '#06b6d4', strokeWidth: selected ? 4 : 3, strokeDasharray: '12 6', animation: 'flow 1s linear infinite', ...style }}
+        style={{ stroke: hc ? HC_COLORS.active : '#06b6d4', strokeWidth: selected ? 4 : 3, strokeDasharray: '12 6', animation: `flow ${heartbeatDuration}s linear infinite`, ...style }}
       />
-      <style>{`@keyframes flow { to { stroke-dashoffset: -18; } }`}</style>
     </EdgeWrapper>
   );
 };
 
-// Tension Edge - #ef4444, 4px stroke
+// Tension Edge - #ef4444, dynamic stroke-width based on tension
 const TensionEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
   const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
   const { isHighContrast: hc } = useTheme();
+
+  // Dynamic stroke-width: scales from 3px to 6px based on tension
+  const rawTension = (data as AppEdgeData & { tension?: number })?.tension ?? 0.7;
+  const tension = Math.min(1, Math.max(0, rawTension));
+  const dynamicStrokeWidth = 3 + (tension * 3); // 3px at tension=0, 6px at tension=1
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
@@ -341,7 +350,7 @@ const TensionEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: hc ? HC_COLORS.tension : '#ef4444', strokeWidth: selected ? 5 : 4, strokeDasharray: selected ? '8 4' : '16 8', opacity: selected ? 1 : 0.7, transition: 'stroke-dasharray 0.3s ease, opacity 0.3s ease', ...style }}
+        style={{ stroke: hc ? HC_COLORS.tension : '#ef4444', strokeWidth: selected ? dynamicStrokeWidth + 1 : dynamicStrokeWidth, strokeDasharray: selected ? '8 4' : '16 8', opacity: selected ? 1 : 0.7, transition: 'stroke-dasharray 0.3s ease, opacity 0.3s ease, stroke-width 0.3s ease', ...style }}
       />
     </EdgeWrapper>
   );
@@ -371,7 +380,6 @@ const SuccessEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
         path={edgePath}
         style={{ stroke: hc ? HC_COLORS.success : '#22c55e', strokeWidth: selected ? 3 : 2, animation: 'pulse-success 0.6s ease-out', ...style }}
       />
-      <style>{`@keyframes pulse-success { 0% { stroke-width: 2; opacity: 1; } 50% { stroke-width: 4; opacity: 0.8; } 100% { stroke-width: 2; opacity: 1; } }`}</style>
     </EdgeWrapper>
   );
 };

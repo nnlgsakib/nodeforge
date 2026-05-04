@@ -179,7 +179,11 @@ function AppInner() {
     // If we have nodes, run layout; otherwise just update edges
     if (lastNodes) {
       runLayout(lastNodes, lastEdges || [])
-        .then((positions) => {
+        .then(({ positions, metrics }) => {
+          // Log performance metrics for monitoring (Subtask 1.2)
+          if (metrics) {
+            console.debug(`[Layout] ${metrics.layoutTimeMS}ms for ${metrics.nodeCount} nodes, ${metrics.edgeCount} edges`);
+          }
           requestAnimationFrame(() => {
             // Replace nodes entirely (preserving positions from layout)
             setNodes(

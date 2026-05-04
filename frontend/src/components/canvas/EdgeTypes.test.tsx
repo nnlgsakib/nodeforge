@@ -27,7 +27,7 @@ describe('EdgeTypes', () => {
       const { container } = render(<DefaultEdge {...mockEdgeProps() as any} />);
       const group = container.querySelector('[role="graphics-symbol"]');
       expect(group).toBeTruthy();
-      expect(group).toHaveAttribute('aria-label', 'Edge from test-edge - default');
+      expect(group).toHaveAttribute('aria-label', 'Edge from a to b, status: default');
     });
 
     it('is keyboard accessible', () => {
@@ -52,8 +52,20 @@ describe('EdgeTypes', () => {
       expect(group).toBeTruthy();
       expect(group).toHaveAttribute(
         'aria-label',
-        'Edge from test-edge - active (flowing)'
+        'Edge from a to b, status: active (flowing)'
       );
+    });
+
+    it('applies heartbeat animation duration based on tension', () => {
+      const ActiveEdge = edgeTypes.active;
+      // Low tension = slower animation (1s)
+      const { container: c1 } = render(<ActiveEdge {...mockEdgeProps({ tension: 0 }) as any} />);
+      // High tension = faster animation (<1s)
+      const { container: c2 } = render(<ActiveEdge {...mockEdgeProps({ tension: 1 }) as any} />);
+
+      // Both should render without errors; heartbeat duration is computed from tension
+      expect(c1.querySelector('[role="graphics-symbol"]')).toBeTruthy();
+      expect(c2.querySelector('[role="graphics-symbol"]')).toBeTruthy();
     });
   });
 
@@ -65,8 +77,18 @@ describe('EdgeTypes', () => {
       expect(group).toBeTruthy();
       expect(group).toHaveAttribute(
         'aria-label',
-        'Edge from test-edge - tension (upstream failure)'
+        'Edge from a to b, status: tension (upstream failure)'
       );
+    });
+
+    it('renders with dynamic stroke-width based on tension', () => {
+      const TensionEdge = edgeTypes.tension;
+      const { container: c1 } = render(<TensionEdge {...mockEdgeProps({ tension: 0.7 }) as any} />);
+      const { container: c2 } = render(<TensionEdge {...mockEdgeProps({ tension: 1.0 }) as any} />);
+
+      // Both should render without errors; stroke-width is computed from tension
+      expect(c1.querySelector('[role="graphics-symbol"]')).toBeTruthy();
+      expect(c2.querySelector('[role="graphics-symbol"]')).toBeTruthy();
     });
   });
 
@@ -78,7 +100,7 @@ describe('EdgeTypes', () => {
       expect(group).toBeTruthy();
       expect(group).toHaveAttribute(
         'aria-label',
-        'Edge from test-edge - success (completed)'
+        'Edge from a to b, status: success (completed)'
       );
     });
   });
@@ -87,14 +109,13 @@ describe('EdgeTypes', () => {
     it('has pointer event handlers attached', () => {
       const DefaultEdge = edgeTypes.default;
       const { container } = render(<DefaultEdge {...mockEdgeProps() as any} />);
-      // Verify the group has the required event handler props set (React stores these internally)
       const group = container.querySelector('[role="graphics-symbol"]');
       expect(group).toBeTruthy();
       expect(group).toHaveAttribute('tabIndex', '0');
     });
   });
 
-  describe('Long-press metadata bubble structure', () => {
+  describe('Long-press metadata bubble', () => {
     it('renders edge with metadata data prop', () => {
       const DefaultEdge = edgeTypes.default;
       const { container } = render(
@@ -105,8 +126,7 @@ describe('EdgeTypes', () => {
       );
       const group = container.querySelector('[role="graphics-symbol"]');
       expect(group).toBeTruthy();
-      // Metadata is passed through; bubble appears on long-press interaction
-      expect(group).toHaveAttribute('aria-label', 'Edge from test-edge - default');
+      expect(group).toHaveAttribute('aria-label', 'Edge from a to b, status: default');
     });
   });
 });

@@ -55,7 +55,7 @@ describe('NodeTypes', () => {
       const GoalNode = nodeTypes.goal;
       render(<GoalNode {...mockNodeProps({ label: 'Test' }) as any} />);
       const node = screen.getByRole('group');
-      expect(node).toHaveAttribute('aria-label', 'Goal node: Test');
+      expect(node).toHaveAttribute('aria-label', 'Node Test, status: pending');
     });
 
     it('is keyboard accessible', () => {
@@ -90,7 +90,7 @@ describe('NodeTypes', () => {
       const SpecNode = nodeTypes.spec;
       render(<SpecNode {...mockNodeProps({ label: 'My Spec' }) as any} />);
       const node = screen.getByRole('group');
-      expect(node).toHaveAttribute('aria-label', 'Spec node: My Spec');
+      expect(node).toHaveAttribute('aria-label', 'Node My Spec, status: pending');
     });
   });
 
@@ -105,7 +105,7 @@ describe('NodeTypes', () => {
       const PlanNode = nodeTypes.plan;
       render(<PlanNode {...mockNodeProps({ label: 'My Plan' }) as any} />);
       const node = screen.getByRole('group');
-      expect(node).toHaveAttribute('aria-label', 'Plan node: My Plan');
+      expect(node).toHaveAttribute('aria-label', 'Node My Plan, status: pending');
     });
   });
 
@@ -120,7 +120,7 @@ describe('NodeTypes', () => {
       const ImplementNode = nodeTypes.implement;
       render(<ImplementNode {...mockNodeProps({ label: 'My Implement' }) as any} />);
       const node = screen.getByRole('group');
-      expect(node).toHaveAttribute('aria-label', 'Implement node: My Implement');
+      expect(node).toHaveAttribute('aria-label', 'Node My Implement, status: pending');
     });
   });
 
@@ -135,7 +135,7 @@ describe('NodeTypes', () => {
       const TestNode = nodeTypes.test;
       render(<TestNode {...mockNodeProps({ label: 'My Test' }) as any} />);
       const node = screen.getByRole('group');
-      expect(node).toHaveAttribute('aria-label', 'Test node: My Test');
+      expect(node).toHaveAttribute('aria-label', 'Node My Test, status: pending');
     });
   });
 
@@ -150,7 +150,7 @@ describe('NodeTypes', () => {
       const ReviewNode = nodeTypes.review;
       render(<ReviewNode {...mockNodeProps({ label: 'My Review' }) as any} />);
       const node = screen.getByRole('group');
-      expect(node).toHaveAttribute('aria-label', 'Review node: My Review');
+      expect(node).toHaveAttribute('aria-label', 'Node My Review, status: pending');
     });
   });
 

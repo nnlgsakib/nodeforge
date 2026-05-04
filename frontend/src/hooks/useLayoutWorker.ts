@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 
 interface LayoutNode {
   id: string;
@@ -19,8 +19,14 @@ interface LayoutConfig {
   nodesep?: number;
 }
 
+interface LayoutMetrics {
+  layoutTimeMS: number;
+  nodeCount: number;
+  edgeCount: number;
+}
+
 interface UseLayoutWorkerReturn {
-  runLayout: (nodes: LayoutNode[], edges: LayoutEdge[], config?: LayoutConfig) => Promise<Record<string, { x: number; y: number }>>;
+  runLayout: (nodes: LayoutNode[], edges: LayoutEdge[], config?: LayoutConfig) => Promise<{ positions: Record<string, { x: number; y: number }>; metrics?: LayoutMetrics }>;
 }
 
 export function useLayoutWorker(): UseLayoutWorkerReturn {
@@ -38,9 +44,23 @@ export function useLayoutWorker(): UseLayoutWorkerReturn {
     return workerRef.current;
   }, []);
 
+  // Cleanup worker on unmount (P7)
+  useEffect(() => {
+    return () => {
+      if (pendingRef.current) {
+        pendingRef.current.reject(new Error('Component unmounted'));
+        pendingRef.current = null;
+      }
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, []);
+
   const runLayout = useCallback(
     (nodes: LayoutNode[], edges: LayoutEdge[], config?: LayoutConfig) => {
-      return new Promise<Record<string, { x: number; y: number }>>((resolve, reject) => {
+      return new Promise<{ positions: Record<string, { x: number; y: number }>; metrics?: LayoutMetrics }>((resolve, reject) => {
         const worker = getWorker();
 
         // Cancel any pending request
@@ -61,7 +81,7 @@ export function useLayoutWorker(): UseLayoutWorkerReturn {
           pendingRef.current = null;
 
           if (event.data.type === 'layout-done') {
-            resolve(event.data.positions);
+            resolve({ positions: event.data.positions, metrics: event.data.metrics });
           } else if (event.data.type === 'layout-error') {
             reject(new Error(event.data.error));
           } else {

@@ -33,6 +33,7 @@ export function useKeyboardShortcuts({
           }
           break;
         case 'p':
+        case ' ':
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             const newPaused = !isPaused;
