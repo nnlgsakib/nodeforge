@@ -11,6 +11,12 @@ export interface MonologueMessage {
   timestamp: number;
 }
 
+export interface SkillInstallMessage {
+  skillId: string;
+  status: 'installed' | 'failed';
+  message?: string;
+}
+
 export interface UseWebSocketReturn {
   connected: boolean;
   monologueMessages: MonologueMessage[];
@@ -19,10 +25,12 @@ export interface UseWebSocketReturn {
   graphUpdateQueue: unknown[];
   nodeUpdateQueue: unknown[];
   edgeUpdateQueue: unknown[];
+  skillInstallMessages: SkillInstallMessage[];
   clearGraphUpdates: () => void;
   clearNodeUpdates: () => void;
   clearEdgeUpdates: () => void;
   clearMonologueMessages: () => void;
+  clearSkillInstallMessages: () => void;
 }
 
 export function useWebSocket(): UseWebSocketReturn {
@@ -34,11 +42,13 @@ export function useWebSocket(): UseWebSocketReturn {
   const [graphUpdateQueue, setGraphUpdateQueue] = useState<unknown[]>([]);
   const [nodeUpdateQueue, setNodeUpdateQueue] = useState<unknown[]>([]);
   const [edgeUpdateQueue, setEdgeUpdateQueue] = useState<unknown[]>([]);
+  const [skillInstallMessages, setSkillInstallMessages] = useState<SkillInstallMessage[]>([]);
 
   const clearGraphUpdates = useCallback(() => setGraphUpdateQueue([]), []);
   const clearNodeUpdates = useCallback(() => setNodeUpdateQueue([]), []);
   const clearEdgeUpdates = useCallback(() => setEdgeUpdateQueue([]), []);
   const clearMonologueMessages = useCallback(() => setMonologueMessages([]), []);
+  const clearSkillInstallMessages = useCallback(() => setSkillInstallMessages([]), []);
 
   const sendMessage = useCallback((msg: WebSocketMessage) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -89,6 +99,18 @@ export function useWebSocket(): UseWebSocketReturn {
           case 'connected':
             // Connection confirmed
             break;
+          case 'skill_installed':
+            setSkillInstallMessages((prev) => [
+              ...prev,
+              { skillId: data.skillId, status: 'installed' },
+            ]);
+            break;
+          case 'skill_install_failed':
+            setSkillInstallMessages((prev) => [
+              ...prev,
+              { skillId: data.skillId, status: 'failed', message: data.message },
+            ]);
+            break;
         }
       } catch {
         // Ignore parse errors
@@ -127,9 +149,11 @@ export function useWebSocket(): UseWebSocketReturn {
     graphUpdateQueue,
     nodeUpdateQueue,
     edgeUpdateQueue,
+    skillInstallMessages,
     clearGraphUpdates,
     clearNodeUpdates,
     clearEdgeUpdates,
     clearMonologueMessages,
+    clearSkillInstallMessages,
   };
 }

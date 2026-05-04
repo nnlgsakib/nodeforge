@@ -17,6 +17,8 @@ import { initialEdges, edgeTypes } from './edges';
 import { SessionExplorer } from './components/panels/SessionExplorer';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { MonologuePanel } from './components/panels/monologue-panel';
+import { SkillMarketplace } from './components/panels/skill-marketplace';
+import { AccessibilityToolbar } from './components/ui/AccessibilityToolbar';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { PhaseBands } from './components/canvas/PhaseBands';
 import { NodeConfig } from './components/panels/node-config';
@@ -72,6 +74,19 @@ export default function App() {
   const [nodeConfigOpen, setNodeConfigOpen] = useState(false);
   const [nodeConfigNodeId, setNodeConfigNodeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [accessibilityVisible, setAccessibilityVisible] = useState(false);
+  const [marketplaceOpen, setMarketplaceOpen] = useState(false);
+  const [isRtl, setIsRtl] = useState(false);
+
+  // Listen for RTL mode changes from AccessibilityToolbar
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsRtl(document.documentElement.dir === 'rtl');
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['dir'] });
+    setIsRtl(document.documentElement.dir === 'rtl');
+    return () => observer.disconnect();
+  }, []);
 
   // WebSocket connection
   const {
@@ -408,6 +423,7 @@ export default function App() {
           nodesDraggable={true}
           nodesConnectable={true}
           proOptions={{ hideAttribution: true }}
+          style={isRtl ? { direction: 'rtl' } : undefined}
         >
           <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#334155" />
           <PhaseBands />
@@ -437,6 +453,22 @@ export default function App() {
         nodeId={nodeConfigNodeId}
         onSave={handleNodeConfigSave}
       />
+
+      {/* Skill Marketplace Button */}
+      <button
+        className="marketplace-trigger-btn"
+        onClick={() => setMarketplaceOpen(true)}
+        aria-label="Open Skill Marketplace"
+        title="Skill Marketplace"
+      >
+        &#9776; Skills
+      </button>
+
+      {/* Skill Marketplace Modal */}
+      <SkillMarketplace open={marketplaceOpen} onOpenChange={setMarketplaceOpen} />
+
+      {/* Accessibility Toolbar */}
+      <AccessibilityToolbar visible={accessibilityVisible} onToggle={() => setAccessibilityVisible((v) => !v)} />
     </div>
   );
 }

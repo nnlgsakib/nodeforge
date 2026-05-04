@@ -147,6 +147,31 @@ func (h *wsHub) ClientCount() int64 {
 	return h.clientCount.Load()
 }
 
+// broadcastSkillInstalled broadcasts a skill installation success event to all clients.
+func (h *wsHub) broadcastSkillInstalled(skillID string) {
+	data, err := json.Marshal(map[string]interface{}{
+		"type":    "skill_installed",
+		"skillId": skillID,
+	})
+	if err != nil {
+		return
+	}
+	h.broadcast <- data
+}
+
+// broadcastSkillInstallFailed broadcasts a skill installation failure to all clients.
+func (h *wsHub) broadcastSkillInstallFailed(skillID, message string) {
+	data, err := json.Marshal(map[string]interface{}{
+		"type":    "skill_install_failed",
+		"skillId": skillID,
+		"message": message,
+	})
+	if err != nil {
+		return
+	}
+	h.broadcast <- data
+}
+
 var (
 	servePort   string
 	distFS      embed.FS
@@ -236,9 +261,11 @@ func runServer() error {
 	// Initialize session manager and register API routes
 	sessionMgr := session.NewManager(".")
 	canvas.RegisterAPIRoutes(r, sessionMgr)
+	registerSkillRoutes(r)
 
 	// Initialize WebSocket hub, graph generator, and context store
 	hub := newWSHub()
+	SetWSHub(hub)
 	go hub.run()
 
 	// Initialize context store (BadgerDB)
