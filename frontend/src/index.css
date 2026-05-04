@@ -200,6 +200,35 @@
     50% { opacity: 0.3; }
   }
 
+  @keyframes slide-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @keyframes node-pulse {
+    0%, 100% { border-color: #FFC107; box-shadow: 0 0 4px #FFC107; }
+    50% { border-color: #FFC10780; box-shadow: 0 0 12px #FFC10780; }
+  }
+
+  @keyframes node-pulse-hc {
+    0%, 100% { border-color: #ffff00; box-shadow: 0 0 4px #ffff00; }
+    50% { border-color: #ffff0080; box-shadow: 0 0 12px #ffff0080; }
+  }
+
+  @keyframes edge-dash {
+    to { stroke-dashoffset: -20; }
+  }
+
   .generating-ellipsis::after {
     content: '.';
     animation: ellipsis 1.5s infinite;

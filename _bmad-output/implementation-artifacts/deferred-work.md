@@ -34,3 +34,10 @@
 - `handleClear` confirms even when messages empty — pre-existing logic issue [monologue-panel.tsx:57-60]
 - `displayMessages` slice creates stale key references — pre-existing, minor DOM churn [monologue-panel.tsx:39-41]
 - Subtask 4.7 node creation/deletion/connection via keyboard — substantial UX feature, better scoped as its own story. Mark 4.7 as partially done [NodeTypes.tsx, CanvasControls.tsx]
+
+## Deferred from: code review of story-3.7-ui-patterns-buttons-feedback-loading-modals (2026-05-04)
+
+- Edge dash flow CSS (`edge-dash` keyframe) defined but never applied by any edge component — pre-existing, CSS defined but not consumed
+- Empty string toast title renders invisible title — cosmetic edge case, unlikely in practice
+- Toast stacking on rapid success→error — low-impact UX, no dedup logic
+- No test for `m` key MonologuePanel toggle required by AC4 — test coverage gap

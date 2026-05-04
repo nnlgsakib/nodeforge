@@ -20,6 +20,7 @@ import { MonologuePanel } from './components/panels/monologue-panel';
 import { SkillMarketplace } from './components/panels/skill-marketplace';
 import { AccessibilityToolbar } from './components/ui/AccessibilityToolbar';
 import { AriaAnnouncer } from './components/ui/aria-announcer';
+import { ToastProvider, useToast } from './components/ui/toast';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { PhaseBands } from './components/canvas/PhaseBands';
 import { NodeConfig } from './components/panels/node-config';
@@ -67,6 +68,15 @@ async function createProject(projectName: string): Promise<ProjectResult> {
 }
 
 export default function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  );
+}
+
+function AppInner() {
+  const { success: toastSuccess, error: toastError } = useToast();
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [chatCollapsed, setChatCollapsed] = useState(false);
@@ -74,7 +84,6 @@ export default function App() {
   const [chatGenerating, setChatGenerating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>();
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [nodeConfigOpen, setNodeConfigOpen] = useState(false);
   const [nodeConfigNodeId, setNodeConfigNodeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -85,18 +94,6 @@ export default function App() {
   // Track previous node statuses to only announce changes in ARIA live region
   const prevStatusesRef = useRef<Record<string, string>>({});
   const announce = useAnnounce();
-
-  // Timer ref for notification cleanup
-  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-    };
-  }, []);
 
   // Detect node status changes and announce via ARIA live regions (AC:3, Subtask 3.3-3.4)
   useEffect(() => {
@@ -288,19 +285,17 @@ export default function App() {
       const result = await createProject(projectName);
       setSessionId(result.sessionId);
       console.log('Project created:', result);
-      setNotification({ type: 'success', message: `Project "${projectName}" created! Session: ${result.sessionId}` });
+      toastSuccess(`Project "${projectName}" created!`, `Session: ${result.sessionId}`);
     } catch (err) {
       console.error('Failed to create project:', err);
-      setNotification({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      toastError('Failed to create project', err instanceof Error ? err.message : (typeof err === 'string' ? err : JSON.stringify(err)));
     }
-    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-    notificationTimerRef.current = setTimeout(() => setNotification(null), 5000);
   };
 
   const handleSendGoal = useCallback(
     (text: string) => {
       if (!connected) {
-        setNotification({ type: 'error', message: 'WebSocket not connected. Please wait or refresh.' });
+        toastError('WebSocket not connected', 'Please wait or refresh.');
         return;
       }
       setChatGenerating(true);
@@ -348,10 +343,8 @@ export default function App() {
       config,
     });
     setNodeConfigOpen(false);
-    setNotification({ type: 'success', message: `Node configuration saved` });
-    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-    notificationTimerRef.current = setTimeout(() => setNotification(null), 3000);
-  }, [sendMessage]);
+    toastSuccess('Node configuration saved');
+  }, [sendMessage, toastSuccess]);
 
   // Drag-and-drop file to node creation (AC4)
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -402,32 +395,14 @@ export default function App() {
       };
 
       setNodes((nds) => [...nds, newNode]);
-      setNotification({
-        type: 'success',
-        message: `Created "${nodeType}" node from "${fileName}"`,
-      });
-      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-      notificationTimerRef.current = setTimeout(() => setNotification(null), 3000);
+      toastSuccess('Node created', `Created "${nodeType}" node from "${fileName}"`);
     },
-    [setNodes, screenToFlowPosition]
+    [setNodes, screenToFlowPosition, toastSuccess]
   );
 
   return (
     <AriaAnnouncer>
       <div className="app-container">
-
-      {notification && (
-        <div className={`notification notification-${notification.type}`}>
-          {notification.message}
-          <button className="notification-close" onClick={() => {
-            if (notificationTimerRef.current) {
-              clearTimeout(notificationTimerRef.current);
-              notificationTimerRef.current = null;
-            }
-            setNotification(null);
-          }}>×</button>
-        </div>
-      )}
 
       {/* Connection status indicator */}
       <div

@@ -20,6 +20,8 @@ function getNodeData(data: NodeProps['data']): NodeData {
 
 // Resolve effective colors: status override wins, otherwise node type colors
 function resolveColors(nodeType: string, status?: NodeStatus, isHighContrast?: boolean) {
+  const isRunning = status === 'running';
+
   // High-contrast mode override (AC:1, Subtask 1.6)
   if (isHighContrast) {
     const hcColors: Record<string, string> = {
@@ -43,6 +45,8 @@ function resolveColors(nodeType: string, status?: NodeStatus, isHighContrast?: b
       border: `2px solid ${effectiveBg}`,
       borderColor: effectiveBg,
       boxShadow: `0 0 12px ${effectiveBg}`,
+      isRunning,
+      isHighContrast,
     };
   }
 
@@ -55,6 +59,8 @@ function resolveColors(nodeType: string, status?: NodeStatus, isHighContrast?: b
       border: `2px solid ${statusColors.border}`,
       borderColor: statusColors.border,
       boxShadow: `0 4px 12px ${statusColors.glow}`,
+      isRunning,
+      isHighContrast: false,
     };
   }
 
@@ -67,6 +73,8 @@ function resolveColors(nodeType: string, status?: NodeStatus, isHighContrast?: b
     border: `2px solid ${border}`,
     borderColor: border,
     boxShadow: `0 4px 12px ${glow}`,
+    isRunning,
+    isHighContrast: false,
   };
 }
 
@@ -91,7 +99,8 @@ function StatusAnnouncer({ status, label }: { status?: NodeStatus; label: string
 
 // Progress bar for running nodes
 function ProgressBar({ progress }: { progress: number }) {
-  const clamped = Math.max(0, Math.min(1, progress));
+  const safeProgress = Number.isFinite(progress) ? progress : 0;
+  const clamped = Math.max(0, Math.min(1, safeProgress));
   return (
     <div
       style={{
@@ -135,7 +144,6 @@ const GoalNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       style={{
-        ...colors,
         borderRadius: '12px',
         padding: '16px 24px',
         minWidth: '140px',
@@ -145,6 +153,16 @@ const GoalNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '2px',
+        background: colors.background,
+        border: colors.isRunning
+          ? '3px solid #FFC107'
+          : colors.border,
+        boxShadow: colors.isRunning
+          ? '0 0 8px #FFC107'
+          : colors.boxShadow,
+        animation: colors.isRunning
+          ? (colors.isHighContrast ? 'node-pulse-hc 300ms infinite alternate' : 'node-pulse 300ms infinite alternate')
+          : 'none',
       }}
       role="group"
       aria-label={`Node ${nodeData.label || 'Goal'}, status: ${nodeData.status || 'pending'}`}
@@ -182,7 +200,6 @@ const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       style={{
-        ...colors,
         width: '120px',
         height: '120px',
         transform: 'rotate(45deg)',
@@ -194,6 +211,16 @@ const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '4px',
+        background: colors.background,
+        border: colors.isRunning
+          ? '3px solid #FFC107'
+          : colors.border,
+        boxShadow: colors.isRunning
+          ? '0 0 8px #FFC107'
+          : colors.boxShadow,
+        animation: colors.isRunning
+          ? (colors.isHighContrast ? 'node-pulse-hc 300ms infinite alternate' : 'node-pulse 300ms infinite alternate')
+          : 'none',
       }}
       role="group"
       aria-label={`Node ${nodeData.label || 'Spec'}, status: ${nodeData.status || 'pending'}`}
@@ -215,6 +242,11 @@ const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
       />
 
       <StatusAnnouncer status={nodeData.status} label="Spec" />
+      {nodeData.progress !== undefined && Number.isFinite(nodeData.progress) && nodeData.status === 'running' && (
+        <div style={{ position: 'absolute', bottom: '-8px', left: '50%', transform: 'translateX(-50%)', width: '80px' }}>
+          <ProgressBar progress={nodeData.progress} />
+        </div>
+      )}
     </div>
   );
 };
@@ -235,7 +267,6 @@ const PlanNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       style={{
-        ...colors,
         borderRadius: '10px',
         padding: '14px 22px',
         minWidth: '130px',
@@ -245,6 +276,16 @@ const PlanNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '2px',
+        background: colors.background,
+        border: colors.isRunning
+          ? '3px solid #FFC107'
+          : colors.border,
+        boxShadow: colors.isRunning
+          ? '0 0 8px #FFC107'
+          : colors.boxShadow,
+        animation: colors.isRunning
+          ? (colors.isHighContrast ? 'node-pulse-hc 300ms infinite alternate' : 'node-pulse 300ms infinite alternate')
+          : 'none',
       }}
       role="group"
       aria-label={`Node ${nodeData.label || 'Plan'}, status: ${nodeData.status || 'pending'}`}
@@ -288,7 +329,6 @@ const ImplementNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       style={{
-        ...colors,
         borderRadius: '6px',
         padding: '14px 22px',
         minWidth: '130px',
@@ -298,6 +338,16 @@ const ImplementNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '2px',
+        background: colors.background,
+        border: colors.isRunning
+          ? '3px solid #FFC107'
+          : colors.border,
+        boxShadow: colors.isRunning
+          ? '0 0 8px #FFC107'
+          : colors.boxShadow,
+        animation: colors.isRunning
+          ? (colors.isHighContrast ? 'node-pulse-hc 300ms infinite alternate' : 'node-pulse 300ms infinite alternate')
+          : 'none',
       }}
       role="group"
       aria-label={`Node ${nodeData.label || 'Implement'}, status: ${nodeData.status || 'pending'}`}
@@ -341,7 +391,6 @@ const TestNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       style={{
-        ...colors,
         borderRadius: '10px',
         padding: '14px 22px',
         minWidth: '120px',
@@ -351,6 +400,16 @@ const TestNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '2px',
+        background: colors.background,
+        border: colors.isRunning
+          ? '3px solid #FFC107'
+          : colors.border,
+        boxShadow: colors.isRunning
+          ? '0 0 8px #FFC107'
+          : colors.boxShadow,
+        animation: colors.isRunning
+          ? (colors.isHighContrast ? 'node-pulse-hc 300ms infinite alternate' : 'node-pulse 300ms infinite alternate')
+          : 'none',
       }}
       role="group"
       aria-label={`Node ${nodeData.label || 'Test'}, status: ${nodeData.status || 'pending'}`}
@@ -394,7 +453,6 @@ const ReviewNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   return (
     <div
       style={{
-        ...colors,
         borderRadius: '6px',
         padding: '14px 22px',
         minWidth: '120px',
@@ -404,6 +462,16 @@ const ReviewNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '2px',
+        background: colors.background,
+        border: colors.isRunning
+          ? '3px solid #FFC107'
+          : colors.border,
+        boxShadow: colors.isRunning
+          ? '0 0 8px #FFC107'
+          : colors.boxShadow,
+        animation: colors.isRunning
+          ? (colors.isHighContrast ? 'node-pulse-hc 300ms infinite alternate' : 'node-pulse 300ms infinite alternate')
+          : 'none',
       }}
       role="group"
       aria-label={`Node ${nodeData.label || 'Review'}, status: ${nodeData.status || 'pending'}`}
