@@ -112,7 +112,7 @@ func (m *Manager) ListSessions(ctx context.Context) ([]Session, error) {
 	defer m.mu.Unlock()
 
 	rows, err := m.db.QueryContext(ctx,
-		"SELECT id, name, status, goal, workspace_path, graph_json, chat_log, created_at, last_active_at FROM sessions ORDER BY created_at DESC")
+		"SELECT id, name, status, goal, workspace_path, graph_json, chat_log, snapshot, heartbeat_at, created_at, last_active_at FROM sessions ORDER BY created_at DESC")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query sessions: %w", err)
 	}
@@ -122,7 +122,7 @@ func (m *Manager) ListSessions(ctx context.Context) ([]Session, error) {
 	for rows.Next() {
 		var s Session
 		err := rows.Scan(&s.ID, &s.Name, &s.Status, &s.Goal, &s.Workspace,
-			&s.GraphJSON, &s.ChatLog, &s.CreatedAt, &s.LastActiveAt)
+			&s.GraphJSON, &s.ChatLog, &s.Snapshot, &s.HeartbeatAt, &s.CreatedAt, &s.LastActiveAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
 		}
@@ -139,9 +139,9 @@ func (m *Manager) GetSession(ctx context.Context, id string) (*Session, error) {
 
 	var s Session
 	err := m.db.QueryRowContext(ctx,
-		"SELECT id, name, status, goal, workspace_path, graph_json, chat_log, created_at, last_active_at FROM sessions WHERE id = ?",
+		"SELECT id, name, status, goal, workspace_path, graph_json, chat_log, snapshot, heartbeat_at, created_at, last_active_at FROM sessions WHERE id = ?",
 		id).Scan(&s.ID, &s.Name, &s.Status, &s.Goal, &s.Workspace,
-		&s.GraphJSON, &s.ChatLog, &s.CreatedAt, &s.LastActiveAt)
+		&s.GraphJSON, &s.ChatLog, &s.Snapshot, &s.HeartbeatAt, &s.CreatedAt, &s.LastActiveAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -167,10 +167,10 @@ func (m *Manager) UpdateSession(ctx context.Context, sess *Session) error {
 // saveSession inserts or updates a session in the database
 func (m *Manager) saveSession(sess *Session) error {
 	_, err := m.db.Exec(`
-		INSERT OR REPLACE INTO sessions (id, name, status, goal, workspace_path, graph_json, chat_log, created_at, last_active_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT OR REPLACE INTO sessions (id, name, status, goal, workspace_path, graph_json, chat_log, snapshot, heartbeat_at, created_at, last_active_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, sess.ID, sess.Name, sess.Status, sess.Goal, sess.Workspace,
-		sess.GraphJSON, sess.ChatLog, sess.CreatedAt, sess.LastActiveAt)
+		sess.GraphJSON, sess.ChatLog, sess.Snapshot, sess.HeartbeatAt, sess.CreatedAt, sess.LastActiveAt)
 	if err != nil {
 		return fmt.Errorf("failed to save session: %w", err)
 	}
@@ -180,6 +180,184 @@ func (m *Manager) saveSession(sess *Session) error {
 // generateSessionID generates a unique session ID
 func generateSessionID() string {
 	return fmt.Sprintf("sess-%s", uuid.New().String())
+}
+
+// ResumeSession loads a session snapshot and restores it to running state.
+// It returns the restored session with status set to running.
+func (m *Manager) ResumeSession(ctx context.Context, id string) (*Session, error) {
+	if m.db == nil {
+		return nil, fmt.Errorf("session database not available")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var s Session
+	err := m.db.QueryRowContext(ctx,
+		"SELECT id, name, status, goal, workspace_path, graph_json, chat_log, snapshot, heartbeat_at, created_at, last_active_at FROM sessions WHERE id = ?",
+		id).Scan(&s.ID, &s.Name, &s.Status, &s.Goal, &s.Workspace,
+		&s.GraphJSON, &s.ChatLog, &s.Snapshot, &s.HeartbeatAt, &s.CreatedAt, &s.LastActiveAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("session not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load session: %w", err)
+	}
+
+	// Restore session to running state
+	now := time.Now().UTC()
+	s.Status = StatusRunning
+	s.LastActiveAt = now
+	s.HeartbeatAt = now
+
+	if err := m.saveSession(&s); err != nil {
+		return nil, fmt.Errorf("failed to restore session: %w", err)
+	}
+
+	return &s, nil
+}
+
+// SnapshotAllSessions captures snapshots of all running sessions.
+// Called during graceful shutdown to persist session state.
+func (m *Manager) SnapshotAllSessions() error {
+	if m.db == nil {
+		return fmt.Errorf("session database not available")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	rows, err := m.db.Query("SELECT id FROM sessions WHERE status = ?", string(StatusRunning))
+	if err != nil {
+		return fmt.Errorf("failed to query running sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("failed to scan session ID: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed during running sessions iteration: %w", err)
+	}
+
+	// Mark all running sessions as complete (snapshotted)
+	// Copy current graph_json and chat_log into snapshot field for restore
+	now := time.Now().UTC()
+	for _, id := range ids {
+		_, err := m.db.Exec(
+			"UPDATE sessions SET status = ?, snapshot = graph_json || '|||' || chat_log, last_active_at = ? WHERE id = ?",
+			string(StatusComplete), now, id,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to snapshot session %s: %w", id, err)
+		}
+	}
+
+	return nil
+}
+
+// UpdateHeartbeat updates the heartbeat timestamp for a session.
+func (m *Manager) UpdateHeartbeat(ctx context.Context, id string) error {
+	if m.db == nil {
+		return fmt.Errorf("session database not available")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now().UTC()
+	_, err := m.db.ExecContext(ctx,
+		"UPDATE sessions SET heartbeat_at = ?, last_active_at = ? WHERE id = ?",
+		now, now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update heartbeat: %w", err)
+	}
+	return nil
+}
+
+// CleanupZombieSessions finds sessions whose heartbeat has timed out and marks them as zombie.
+// Returns the list of zombie session IDs that were cleaned up.
+func (m *Manager) CleanupZombieSessions(ctx context.Context, timeout time.Duration) ([]string, error) {
+	if m.db == nil {
+		return nil, fmt.Errorf("session database not available")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cutoff := time.Now().UTC().Add(-timeout)
+
+	// Find running sessions with expired heartbeat
+	rows, err := m.db.QueryContext(ctx,
+		"SELECT id FROM sessions WHERE status = ? AND heartbeat_at < ? AND heartbeat_at IS NOT NULL",
+		string(StatusRunning), cutoff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query zombie sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var zombieIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan session ID: %w", err)
+		}
+		zombieIDs = append(zombieIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed during zombie sessions iteration: %w", err)
+	}
+
+	// Mark zombie sessions
+	for _, id := range zombieIDs {
+		_, err := m.db.ExecContext(ctx,
+			"UPDATE sessions SET status = ? WHERE id = ?",
+			string(StatusZombie), id,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to mark zombie session %s: %w", id, err)
+		}
+	}
+
+	return zombieIDs, nil
+}
+
+// ListZombieSessions returns all zombie sessions.
+func (m *Manager) ListZombieSessions(ctx context.Context) ([]Session, error) {
+	if m.db == nil {
+		return nil, fmt.Errorf("session database not available")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	rows, err := m.db.QueryContext(ctx,
+		"SELECT id, name, status, goal, workspace_path, graph_json, chat_log, snapshot, heartbeat_at, created_at, last_active_at FROM sessions WHERE status = ? ORDER BY last_active_at DESC",
+		string(StatusZombie),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query zombie sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var s Session
+		err := rows.Scan(&s.ID, &s.Name, &s.Status, &s.Goal, &s.Workspace,
+			&s.GraphJSON, &s.ChatLog, &s.Snapshot, &s.HeartbeatAt, &s.CreatedAt, &s.LastActiveAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan session: %w", err)
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
 }
 
 // Close closes the session database connection

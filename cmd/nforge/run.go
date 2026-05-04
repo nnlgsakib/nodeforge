@@ -142,10 +142,10 @@ func runSpecFile(cmd *cobra.Command, args []string) error {
 // initLLMProvider initializes the first available LLM provider for headless execution
 func initLLMProvider() llm.LLMProvider {
 	ollamaCfg := &llm.ProviderConfig{
-		Type:     llm.ProviderOllama,
-		BaseURL:  "http://localhost:11434",
-		Model:    "llama3",
-		Timeout:  30 * time.Second,
+		Type:    llm.ProviderOllama,
+		BaseURL: "http://localhost:11434",
+		Model:   "llama3",
+		Timeout: 30 * time.Second,
 	}
 	if provider, err := llm.NewProvider(ollamaCfg); err == nil {
 		return provider

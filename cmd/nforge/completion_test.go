@@ -71,4 +71,3 @@ func newRootCmdForTest() *cobra.Command {
 	rootCmd.InitDefaultCompletionCmd()
 	return rootCmd
 }
-

@@ -29,23 +29,25 @@ import (
 
 // wsClient represents a WebSocket client connection
 type wsClient struct {
-	hub    *wsHub
-	conn   *websocket.Conn
-	send   chan []byte
-	mu     sync.Mutex
+	hub  *wsHub
+	conn *websocket.Conn
+	send chan []byte
 }
 
 // wsHub manages all WebSocket clients and message broadcasting
 type wsHub struct {
-	clients        map[*wsClient]bool
-	broadcast      chan []byte
-	register       chan *wsClient
-	unregister     chan *wsClient
-	graphGen       *engine.Generator
-	store          *nfcontext.Store
-	statusChecker  *llm.StatusChecker
-	mu             sync.RWMutex
-	clientCount    atomic.Int64 // Story 2.7: Track active connections for monitoring
+	clients       map[*wsClient]bool
+	broadcast     chan []byte
+	register      chan *wsClient
+	unregister    chan *wsClient
+	done          chan struct{} // closed on shutdown to signal hub to exit
+	graphGen      *engine.Generator
+	store         *nfcontext.Store
+	statusChecker *llm.StatusChecker
+	sessionMgr    *session.Manager
+	heartbeatMon  *session.HeartbeatMonitor
+	mu            sync.RWMutex
+	clientCount   atomic.Int64 // Story 2.7: Track active connections for monitoring
 }
 
 // newWSHub creates a new WebSocket hub
@@ -55,6 +57,7 @@ func newWSHub() *wsHub {
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *wsClient),
 		unregister: make(chan *wsClient),
+		done:       make(chan struct{}),
 	}
 }
 
@@ -91,6 +94,17 @@ func (h *wsHub) run() {
 				}
 			}
 			h.mu.RUnlock()
+
+		case <-h.done:
+			// Close broadcast and all client channels to unblock waiting goroutines
+			close(h.broadcast)
+			h.mu.Lock()
+			for client := range h.clients {
+				close(client.send)
+				delete(h.clients, client)
+			}
+			h.mu.Unlock()
+			return
 		}
 	}
 }
@@ -98,10 +112,10 @@ func (h *wsHub) run() {
 // broadcastGraphUpdate sends a graph update to all connected clients
 func (h *wsHub) broadcastGraphUpdate(graph *engine.Graph) {
 	data, err := json.Marshal(map[string]interface{}{
-		"type":   "graph_update",
-		"nodes":  graph.Nodes,
-		"edges":  graph.Edges,
-		"goal":   graph.Goal,
+		"type":  "graph_update",
+		"nodes": graph.Nodes,
+		"edges": graph.Edges,
+		"goal":  graph.Goal,
 	})
 	if err != nil {
 		return
@@ -172,10 +186,32 @@ func (h *wsHub) broadcastSkillInstallFailed(skillID, message string) {
 	h.broadcast <- data
 }
 
+// broadcastSessionResume broadcasts a session restore event to all clients.
+func (h *wsHub) broadcastSessionResume(sess *session.Session) {
+	data, err := json.Marshal(map[string]interface{}{
+		"type":      "session_resume",
+		"sessionId": sess.ID,
+		"graphJson": sess.GraphJSON,
+		"chatLog":   sess.ChatLog,
+	})
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal session resume: %v\n", err)
+		return
+	}
+	// Send in goroutine with timeout to avoid blocking HTTP handler
+	go func() {
+		select {
+		case h.broadcast <- data:
+		case <-time.After(2 * time.Second):
+		case <-h.done:
+		}
+	}()
+}
+
 var (
-	servePort   string
-	distFS      embed.FS
-	frontendFS  fs.FS
+	servePort    string
+	distFS       embed.FS
+	frontendFS   fs.FS
 	shuttingDown int32 // accessed via sync/atomic
 )
 
@@ -261,15 +297,21 @@ func runServer() error {
 	// Initialize session manager and register API routes
 	sessionMgr, err := session.NewManager(".")
 	if err != nil {
-		fmt.Printf("Warning: failed to initialize session manager: %v\n", err)
-	} else {
-		defer sessionMgr.Close()
+		return fmt.Errorf("failed to initialize session manager: %w", err)
 	}
+	defer sessionMgr.Close()
 	canvas.RegisterAPIRoutes(r, sessionMgr)
 	registerSkillRoutes(r)
 
+	// Initialize heartbeat monitor
+	hbCfg := session.DefaultHeartbeatConfig()
+	hbMon := session.NewHeartbeatMonitor(sessionMgr, hbCfg)
+	defer hbMon.Stop()
+
 	// Initialize WebSocket hub, graph generator, and context store
 	hub := newWSHub()
+	hub.sessionMgr = sessionMgr
+	hub.heartbeatMon = hbMon
 	SetWSHub(hub)
 	go hub.run()
 
@@ -290,10 +332,10 @@ func runServer() error {
 	var providers []llm.LLMProvider
 
 	ollamaCfg := &llm.ProviderConfig{
-		Type:     llm.ProviderOllama,
-		BaseURL:  "http://localhost:11434",
-		Model:    "llama3",
-		Timeout:  30 * time.Second,
+		Type:    llm.ProviderOllama,
+		BaseURL: "http://localhost:11434",
+		Model:   "llama3",
+		Timeout: 30 * time.Second,
 	}
 	if ollamaProv, err := llm.NewProvider(ollamaCfg); err == nil {
 		providers = append(providers, ollamaProv)
@@ -314,6 +356,21 @@ func runServer() error {
 	if len(providers) > 0 {
 		hub.graphGen = engine.NewGenerator(providers[0], store)
 	}
+
+	// Resume endpoint: POST /api/v1/sessions/:id/resume
+	r.POST("/api/v1/sessions/:id/resume", func(c *gin.Context) {
+		id := c.Param("id")
+		sess, err := sessionMgr.ResumeSession(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		// Broadcast session restore to all clients
+		hub.broadcastSessionResume(sess)
+		// Record heartbeat
+		hbMon.Beat(id)
+		c.JSON(200, sess)
+	})
 
 	// WebSocket upgrader
 	websocketUpgrader := websocket.Upgrader{
@@ -395,11 +452,17 @@ func runServer() error {
 
 				// Parse incoming message
 				var wsMsg struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
+					Type      string `json:"type"`
+					Text      string `json:"text"`
+					SessionID string `json:"sessionId"`
 				}
 				if err := json.Unmarshal(msg, &wsMsg); err != nil {
 					continue
+				}
+
+				// Record heartbeat for session activity
+				if wsMsg.SessionID != "" && hub.heartbeatMon != nil {
+					hub.heartbeatMon.Beat(wsMsg.SessionID)
 				}
 
 				// Handle goal message: generate graph
@@ -553,7 +616,7 @@ func runServer() error {
 				return
 			}
 
-			c.String(404, "Frontend not found. Build the frontend first with npm run build.")
+			c.String(404, "Frontend not found. Build the backend first with npm run build.")
 		})
 	} else {
 		r.NoRoute(func(c *gin.Context) {
@@ -567,40 +630,45 @@ func runServer() error {
 		Handler: r,
 	}
 
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	errCh := make(chan error, 1)
 	go func() {
 		fmt.Printf("Starting server on :%s\n", servePort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
-			return
 		}
 	}()
 
-	select {
-	case <-quit:
-		fmt.Println("Shutting down server...")
-		atomic.StoreInt32(&shuttingDown, 1)
-		// Signal all hub-connected WebSocket clients to exit
-		hub.mu.Lock()
-		for client := range hub.clients {
-			client.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(time.Second))
-			close(client.send)
-			client.conn.Close()
-		}
-		hub.mu.Unlock()
+	// Single signal handler for graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
-			return fmt.Errorf("server forced to shutdown: %w", err)
-		}
-		fmt.Println("Server exited")
-		return nil
+	select {
 	case err := <-errCh:
-		return fmt.Errorf("server failed to start: %w", err)
+		return fmt.Errorf("server failed: %w", err)
+	case <-quit:
 	}
+
+	fmt.Println("Shutting down server...")
+	atomic.StoreInt32(&shuttingDown, 1)
+
+	// Snapshot all active sessions before shutdown
+	if err := sessionMgr.SnapshotAllSessions(); err != nil {
+		fmt.Printf("Warning: failed to snapshot sessions: %v\n", err)
+	}
+
+	// Signal hub to stop — this closes broadcast and all client send channels
+	close(hub.done)
+
+	// Give write pumps time to drain before HTTP server shutdown
+	time.Sleep(100 * time.Millisecond)
+
+	// Gracefully shut down HTTP server
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("server forced to shutdown: %w", err)
+	}
+
+	fmt.Println("Server exited")
+	return nil
 }

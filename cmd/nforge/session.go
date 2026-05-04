@@ -15,7 +15,7 @@ var sessionWorkspaceDir string
 var sessionCmd = &cobra.Command{
 	Use:   "session",
 	Short: "Manage sessions",
-	Long:  "Create, list, and manage NodeForge sessions",
+	Long:  "Create, list, resume, and manage NodeForge sessions",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.Usage()
 		return nil
@@ -31,9 +31,20 @@ var sessionListCmd = &cobra.Command{
 	},
 }
 
+var sessionResumeCmd = &cobra.Command{
+	Use:   "resume <session-id>",
+	Short: "Resume a session",
+	Long:  "Restore a session from a previous shutdown and set its status back to running",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runResumeSession(sessionWorkspaceDir, args[0])
+	},
+}
+
 func init() {
 	sessionCmd.PersistentFlags().StringVar(&sessionWorkspaceDir, "workspace-dir", ".", "Workspace root directory")
 	sessionCmd.AddCommand(sessionListCmd)
+	sessionCmd.AddCommand(sessionResumeCmd)
 	rootCmd.AddCommand(sessionCmd)
 }
 
@@ -65,5 +76,25 @@ func runListSessions(workspaceDir string) error {
 	w.Flush()
 
 	fmt.Printf("\nTotal: %d session(s)\n", len(sessions))
+	return nil
+}
+
+func runResumeSession(workspaceDir string, id string) error {
+	mgr, err := session.NewManager(workspaceDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize session manager: %w", err)
+	}
+	defer mgr.Close()
+
+	sess, err := mgr.ResumeSession(context.Background(), id)
+	if err != nil {
+		return fmt.Errorf("failed to resume session: %w", err)
+	}
+
+	fmt.Printf("Session resumed successfully:\n")
+	fmt.Printf("  ID:     %s\n", sess.ID)
+	fmt.Printf("  Name:   %s\n", sess.Name)
+	fmt.Printf("  Status: %s\n", sess.Status)
+	fmt.Printf("  Goal:   %s\n", sess.Goal)
 	return nil
 }

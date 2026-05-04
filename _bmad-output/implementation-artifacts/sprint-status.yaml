@@ -75,7 +75,7 @@ development_status:
         epic-3-retrospective: optional
         epic-4: in-progress
         4-1-session-creation-and-isolation: done
-        4-2-session-resume-and-graceful-shutdown: ready-for-dev
+        4-2-session-resume-and-graceful-shutdown: review
         4-3-fork-git-auto-commit-and-time-travel-debug: ready-for-dev
         4-4-session-export-and-quotas: ready-for-dev
         4-5-session-resume-export-cli: ready-for-dev

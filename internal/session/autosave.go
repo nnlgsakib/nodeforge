@@ -28,8 +28,8 @@ func (m *Manager) UpdateSessionState(ctx context.Context, sessionID string, grap
 
 	now := time.Now().UTC()
 	_, err := m.db.ExecContext(ctx,
-		"UPDATE sessions SET graph_json = COALESCE(?, graph_json), chat_log = COALESCE(?, chat_log), status = COALESCE(?, status), last_active_at = ? WHERE id = ?",
-		graphJSON, chatLog, status, now, sessionID,
+		"UPDATE sessions SET graph_json = COALESCE(?, graph_json), chat_log = COALESCE(?, chat_log), status = COALESCE(?, status), heartbeat_at = ?, last_active_at = ? WHERE id = ?",
+		graphJSON, chatLog, status, now, now, sessionID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update session state: %w", err)

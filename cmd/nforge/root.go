@@ -15,19 +15,20 @@ var configPath string
 
 // NodeTypes defines the valid node types for completion
 var NodeTypes = []string{"Goal", "Spec", "Plan", "Implement", "Test", "Review"}
+
 // NodeTypeDescriptions maps node types to their descriptions
 var NodeTypeDescriptions = map[string]string{
-	"Goal":   "Top-level goal node",
-	"Spec":   "Specification node",
-	"Plan":   "Planning node",
+	"Goal":      "Top-level goal node",
+	"Spec":      "Specification node",
+	"Plan":      "Planning node",
 	"Implement": "Implementation node",
-	"Test":   "Testing node",
-	"Review": "Review node",
+	"Test":      "Testing node",
+	"Review":    "Review node",
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "nforge",
-	Short: "NodeForge OS - Spec-driven development workbench",
+	Use:     "nforge",
+	Short:   "NodeForge OS - Spec-driven development workbench",
 	Version: version,
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: false,

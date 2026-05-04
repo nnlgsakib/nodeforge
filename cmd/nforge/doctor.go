@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/dgraph-io/badger/v4"
+	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -47,6 +47,7 @@ func runHealthChecks() error {
 		checkFrontendBuild,
 		checkSQLite,
 		checkBadgerDB,
+		checkSessionHealth,
 	}
 
 	for _, check := range checks {
@@ -309,4 +310,77 @@ func checkAnthropic(apiKey string, baseURL string) checkResult {
 	}
 
 	return checkResult{Name: "LLM: Anthropic", Passed: false, Message: fmt.Sprintf("Unexpected status %d", resp.StatusCode)}
+}
+
+func checkSessionHealth() checkResult {
+	// Resolve sessions.db path relative to executable
+	sessionsDB := ".nforge/sessions.db"
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), ".nforge", "sessions.db")
+		if _, err2 := os.Stat(candidate); err2 == nil {
+			sessionsDB = candidate
+		}
+	}
+
+	// Check SQLite sessions database
+	if _, err := os.Stat(sessionsDB); os.IsNotExist(err) {
+		return checkResult{Name: "Session Health", Passed: true, Message: "No sessions database found (first run)"}
+	}
+
+	db, err := sql.Open("sqlite3", sessionsDB)
+	if err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Failed to open sessions.db: %v", err)}
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Sessions database ping failed: %v", err)}
+	}
+
+	// Count sessions by status
+	var total, running, complete, zombie int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&total); err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Failed to count sessions: %v", err)}
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM sessions WHERE status = ?", "running").Scan(&running); err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Failed to count running sessions: %v", err)}
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM sessions WHERE status = ?", "complete").Scan(&complete); err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Failed to count complete sessions: %v", err)}
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM sessions WHERE status = ?", "zombie").Scan(&zombie); err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Failed to count zombie sessions: %v", err)}
+	}
+
+	// Check workspace directories exist for sessions
+	var workspaceIssues int
+	rows, err := db.Query("SELECT workspace_path FROM sessions")
+	if err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Failed to query workspace paths: %v", err)}
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			workspaceIssues++
+			continue
+		}
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			workspaceIssues++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return checkResult{Name: "Session Health", Passed: false, Message: fmt.Sprintf("Error during workspace scan: %v", err)}
+	}
+
+	msg := fmt.Sprintf("%d total (%d running, %d complete, %d zombie)", total, running, complete, zombie)
+	if workspaceIssues > 0 {
+		msg += fmt.Sprintf(", %d workspace dir(s) missing", workspaceIssues)
+	}
+
+	if zombie > 0 || workspaceIssues > 0 {
+		return checkResult{Name: "Session Health", Passed: false, Message: msg}
+	}
+
+	return checkResult{Name: "Session Health", Passed: true, Message: msg}
 }

@@ -11,7 +11,7 @@ interface SessionExplorerProps {
   onStartChat?: () => void;
 }
 
-type StatusFilter = 'all' | 'running' | 'complete' | 'failed' | 'paused';
+type StatusFilter = 'all' | 'running' | 'complete' | 'failed' | 'paused' | 'zombie';
 type DateFilter = 'all' | 'today' | 'week' | 'month';
 
 const statusColors: Record<Session['status'], string> = {
@@ -19,6 +19,7 @@ const statusColors: Record<Session['status'], string> = {
   complete: '#22c55e',
   failed: '#ef4444',
   paused: '#ff9800',
+  zombie: '#8b5cf6',
 };
 
 export const SessionExplorer: React.FC<SessionExplorerProps> = ({
@@ -194,6 +195,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
           <option value="complete">Complete</option>
           <option value="failed">Failed</option>
           <option value="paused">Paused</option>
+          <option value="zombie">Zombie</option>
         </select>
         <select
           value={dateFilter}
@@ -313,15 +315,21 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
                       flex: 1,
                       padding: '4px 8px',
                       fontSize: '11px',
-                      background: 'var(--accent)',
+                      background: session.status === 'zombie' ? '#8b5cf6' : 'var(--accent)',
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer',
                       transition: 'opacity 200ms ease-out',
                     }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.opacity = '0.85';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.opacity = '1';
+                    }}
                   >
-                    Resume
+                    {session.status === 'zombie' ? 'Clean Up' : 'Resume'}
                   </button>
                 )}
                 <button

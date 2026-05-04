@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 export interface Session {
   sessionId: string;
   projectName: string;
-  status: 'running' | 'complete' | 'failed' | 'paused';
+  status: 'running' | 'complete' | 'failed' | 'paused' | 'zombie';
   goal: string;
   workspace: string;
   createdAt: string;
@@ -32,6 +32,7 @@ interface UseSessionReturn {
   listSessions: () => Promise<void>;
   getSession: (sessionId: string) => Promise<Session | null>;
   autoSaveSession: (sessionId: string, data: { graphJson?: string; chatLog?: string; status?: string }) => Promise<Session | null>;
+  resumeSession: (sessionId: string) => Promise<Session | null>;
 }
 
 export function useSession(): UseSessionReturn {
@@ -178,6 +179,41 @@ export function useSession(): UseSessionReturn {
     }
   }, [cleanup, currentSession]);
 
+  const resumeSession = useCallback(async (sessionId: string) => {
+    cleanup();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/v1/sessions/${sessionId}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to resume session');
+      }
+      const session: unknown = await response.json();
+      if (!isValidSession(session)) {
+        throw new Error('Invalid session response from server');
+      }
+      // Update in list
+      setSessions(prev => prev.map(s => s.sessionId === sessionId ? session : s));
+      setCurrentSession(session);
+      return session;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError(err.message);
+      }
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [cleanup, currentSession]);
+
   return {
     sessions,
     currentSession,
@@ -187,5 +223,6 @@ export function useSession(): UseSessionReturn {
     listSessions,
     getSession,
     autoSaveSession,
+    resumeSession,
   };
 }

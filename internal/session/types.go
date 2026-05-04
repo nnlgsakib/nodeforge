@@ -16,6 +16,7 @@ const (
 	StatusComplete SessionStatus = "complete"
 	StatusFailed   SessionStatus = "failed"
 	StatusPaused   SessionStatus = "paused"
+	StatusZombie   SessionStatus = "zombie"
 )
 
 // Session represents a project workspace session with persisted state
@@ -27,6 +28,8 @@ type Session struct {
 	Workspace    string        `json:"workspace"`
 	GraphJSON    string        `json:"graphJson,omitempty"`
 	ChatLog      string        `json:"chatLog,omitempty"`
+	Snapshot     string        `json:"snapshot,omitempty"`
+	HeartbeatAt  time.Time     `json:"heartbeatAt,omitempty"`
 	CreatedAt    time.Time     `json:"createdAt"`
 	LastActiveAt time.Time     `json:"lastActive"`
 }
@@ -41,11 +44,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 	workspace_path TEXT NOT NULL,
 	graph_json TEXT DEFAULT '{}',
 	chat_log TEXT DEFAULT '[]',
+	snapshot TEXT DEFAULT '',
+	heartbeat_at DATETIME,
 	created_at DATETIME NOT NULL,
 	last_active_at DATETIME NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_heartbeat_at ON sessions(heartbeat_at);
 `
 
 // initDB initializes the SQLite database and creates tables if they don't exist
