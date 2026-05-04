@@ -57,6 +57,47 @@ CREATE INDEX IF NOT EXISTS idx_sessions_heartbeat_at ON sessions(heartbeat_at);
 // initDB initializes the SQLite database and creates tables if they don't exist
 func initDB(db *sql.DB) error {
 	_, err := db.Exec(schemaSQL)
+	if err != nil {
+		return err
+	}
+	// Run migrations for existing databases that may be missing columns
+	return migrateSchema(db)
+}
+
+// migrateSchema adds missing columns to existing databases (e.g. from older versions)
+func migrateSchema(db *sql.DB) error {
+	// Check and add missing columns that may not exist in older databases
+	migrations := []struct {
+		col  string
+		typ  string
+		def  string
+	}{
+		{"snapshot", "TEXT", "DEFAULT ''"},
+		{"heartbeat_at", "DATETIME", ""},
+	}
+
+	for _, m := range migrations {
+		var count int
+		if err := db.QueryRow(
+			"SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name=?",
+			m.col,
+		).Scan(&count); err != nil {
+			return fmt.Errorf("failed to check column %s: %w", m.col, err)
+		}
+		if count == 0 {
+			sql := fmt.Sprintf("ALTER TABLE sessions ADD COLUMN %s %s %s", m.col, m.typ, m.def)
+			if _, err := db.Exec(sql); err != nil {
+				return fmt.Errorf("failed to add column %s: %w", m.col, err)
+			}
+		}
+	}
+
+	// Ensure indexes exist (CREATE INDEX IF NOT EXISTS is safe on existing indexes)
+	_, err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+		CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
+		CREATE INDEX IF NOT EXISTS idx_sessions_heartbeat_at ON sessions(heartbeat_at);
+	`)
 	return err
 }
 

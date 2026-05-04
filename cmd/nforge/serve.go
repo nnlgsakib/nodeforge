@@ -455,6 +455,7 @@ func runServer() error {
 					Type      string `json:"type"`
 					Text      string `json:"text"`
 					SessionID string `json:"sessionId"`
+					NodeID    string `json:"nodeId"`
 				}
 				if err := json.Unmarshal(msg, &wsMsg); err != nil {
 					continue
@@ -475,6 +476,26 @@ func runServer() error {
 						}
 						// Broadcast graph update to all clients
 						hub.broadcastGraphUpdate(graph)
+					}
+				}
+
+				// Story 4.3: Handle checkout_node message for time-travel debug
+				if wsMsg.Type == "checkout_node" && hub.sessionMgr != nil {
+					if wsMsg.SessionID != "" && wsMsg.NodeID != "" {
+						err := hub.sessionMgr.CheckoutNodeState(wsMsg.SessionID, wsMsg.NodeID)
+						resp, _ := json.Marshal(map[string]interface{}{
+							"type":      "checkout_node",
+							"sessionId": wsMsg.SessionID,
+							"nodeId":    wsMsg.NodeID,
+							"success":   err == nil,
+							"error":     func() string { if err != nil { return err.Error() }; return "" }(),
+						})
+						// Send response only to the requesting client
+						select {
+						case client.send <- resp:
+						default:
+							// Client can't keep up — drop
+						}
 					}
 				}
 			}

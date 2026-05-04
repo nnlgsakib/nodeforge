@@ -41,10 +41,21 @@ var sessionResumeCmd = &cobra.Command{
 	},
 }
 
+var sessionForkCmd = &cobra.Command{
+	Use:   "fork <session-id>",
+	Short: "Fork a session",
+	Long:  "Create a new session branch from an existing session, copying workspace state and Git history",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runForkSession(sessionWorkspaceDir, args[0])
+	},
+}
+
 func init() {
 	sessionCmd.PersistentFlags().StringVar(&sessionWorkspaceDir, "workspace-dir", ".", "Workspace root directory")
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionResumeCmd)
+	sessionCmd.AddCommand(sessionForkCmd)
 	rootCmd.AddCommand(sessionCmd)
 }
 
@@ -96,5 +107,25 @@ func runResumeSession(workspaceDir string, id string) error {
 	fmt.Printf("  Name:   %s\n", sess.Name)
 	fmt.Printf("  Status: %s\n", sess.Status)
 	fmt.Printf("  Goal:   %s\n", sess.Goal)
+	return nil
+}
+
+func runForkSession(workspaceDir string, id string) error {
+	mgr, err := session.NewManager(workspaceDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize session manager: %w", err)
+	}
+	defer mgr.Close()
+
+	sess, err := mgr.ForkSession(context.Background(), id)
+	if err != nil {
+		return fmt.Errorf("failed to fork session: %w", err)
+	}
+
+	fmt.Printf("Session forked successfully:\n")
+	fmt.Printf("  ID:     %s\n", sess.ID)
+	fmt.Printf("  Name:   %s\n", sess.Name)
+	fmt.Printf("  Parent: %s\n", id)
+	fmt.Printf("  Status: %s\n", sess.Status)
 	return nil
 }

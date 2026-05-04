@@ -1,6 +1,6 @@
 # Story 4.3: Fork, Git Auto-Commit & Time-Travel Debug
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -18,26 +18,26 @@ So that I can experiment safely and debug historically.
 
 ## Tasks / Subtasks
 
-- [ ] Implement Git auto-commit after each node completion (AC: 2)
-  - [ ] Create `internal/session/autocommit.go` with `AutoCommit(sessionID, nodeID, status string) error` function
-  - [ ] Run `git add -A` and `git commit -m "Node <nodeID> completed: <status>"` in workspace directory
-  - [ ] Integrate with `internal/engine/executor.go` to call `AutoCommit` after each node completes
-  - [ ] Deterministic commit messages: include node ID, status, ISO 8601 timestamp
+- [x] Implement Git auto-commit after each node completion (AC: 2)
+  - [x] Create `internal/session/autocommit.go` with `AutoCommit(sessionID, nodeID, status string) error` function
+  - [x] Run `git add -A` and `git commit -m "Node <nodeID> completed: <status>"` in workspace directory
+  - [x] Integrate with `internal/engine/executor.go` to call `AutoCommit` after each node completes
+  - [x] Deterministic commit messages: include node ID, status, ISO 8601 timestamp
 
-- [ ] Implement session fork (Git branch-like) (AC: 1)
-  - [ ] Create `internal/session/fork.go` with `ForkSession(ctx context.Context, parentID string) (*Session, error)` function
-  - [ ] Initialize Git repo in workspace if not already initialized (`git init`)
-  - [ ] Create new session (new ID, same workspace state) with Git branch from current commit
-  - [ ] Add fork CLI command to `cmd/nforge/session.go` (e.g., `nforge session fork <id>`)
+- [x] Implement session fork (Git branch-like) (AC: 1)
+  - [x] Create `internal/session/fork.go` with `ForkSession(ctx context.Context, parentID string) (*Session, error)` function
+  - [x] Initialize Git repo in workspace if not already initialized (`git init`)
+  - [x] Create new session (new ID, same workspace state) with Git branch from current commit
+  - [x] Add fork CLI command to `cmd/nforge/session.go` (e.g., `nforge session fork <id>`)
 
-- [ ] Implement time-travel debug (AC: 3)
-  - [ ] Create `internal/session/timetravel.go` with `CheckoutNodeState(sessionID, nodeID string) error` function
-  - [ ] Look up Git commit hash for the target completed node
-  - [ ] Run `git checkout <commit-hash>` in workspace to restore files to that node's completion state
-  - [ ] Add WebSocket message type `checkout_node` for UI-triggered time-travel (App.tsx integration)
+- [x] Implement time-travel debug (AC: 3)
+  - [x] Create `internal/session/timetravel.go` with `CheckoutNodeState(sessionID, nodeID string) error` function
+  - [x] Look up Git commit hash for the target completed node
+  - [x] Run `git checkout <commit-hash>` in workspace to restore files to that node's completion state
+  - [x] Add WebSocket message type `checkout_node` for UI-triggered time-travel (App.tsx integration)
 
-- [ ] Update `internal/session/manager.go` to expose `ForkSession`, `AutoCommit`, `CheckoutNodeState` methods
-- [ ] Update `internal/session/workspace.go` to include `InitGitRepo()` method for workspace Git initialization
+- [x] Update `internal/session/manager.go` to expose `ForkSession`, `AutoCommit`, `CheckoutNodeState` methods
+- [x] Update `internal/session/workspace.go` to include `InitGitRepo()` method for workspace Git initialization
 
 ## Dev Notes
 
@@ -95,10 +95,47 @@ No previous story files found for Epic 4 (stories 4-1, 4-2 not yet created). Fol
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Qoder CLI (sonnet)
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- Created `internal/session/autocommit.go`: `AutoCommit(sessionID, nodeID, status string) error` method on `*Manager`. Runs `git add -A` + `git commit` with deterministic message format `"Node <nodeID> completed: <status> [<ISO8601>]"`. Skips commit if no staged changes. Validates session ID and checks git repo existence.
+- Created `internal/session/autocommit_test.go`: 6 tests covering non-git repo, no-changes, with-changes, deterministic commit messages, invalid session ID, and `isGitRepo` helper.
+- Created `internal/session/fork.go`: `ForkSession(ctx, parentID)` creates new session with copied workspace and git branch. Copies `.git` directory and creates `fork-<id>` branch. Nil-context safe.
+- Created `internal/session/fork_test.go`: 5 tests covering basic fork, fork with git, non-existent parent, invalid ID, and `copyDir` helper.
+- Created `internal/session/timetravel.go`: `CheckoutNodeState(sessionID, nodeID)` finds commit via `git log --grep` and checks out. `GetNodeCommitHash` returns hash without checkout.
+- Created `internal/session/timetravel_test.go`: 5 tests covering successful checkout, node not found, non-git repo, invalid session ID, and `GetNodeCommitHash`.
+- Updated `internal/session/workspace.go`: Added `InitGitRepo(workspaceDir)` function that runs `git init` + configures default user. Safe to call multiple times.
+- Updated `internal/engine/executor.go`: Added `NodeAutoCommitter` interface, `autoCommitter`/`sessionID` fields, `SetAutoCommitter`/`SetSessionID` methods. Calls `AutoCommit` after node completion (best-effort, non-blocking).
+- Updated `cmd/nforge/session.go`: Added `fork` subcommand with `runForkSession` handler.
+- Updated `cmd/nforge/serve.go`: Added `checkout_node` WebSocket message handler in read pump. Calls `CheckoutNodeState` and broadcasts response.
+- Updated `frontend/src/hooks/useWebSocket.ts`: Added `checkout_node` message type handler ( Story 4.3).
+
 ### File List
+
+**New files:**
+- `internal/session/autocommit.go`
+- `internal/session/autocommit_test.go`
+- `internal/session/fork.go`
+- `internal/session/fork_test.go`
+- `internal/session/timetravel.go`
+- `internal/session/timetravel_test.go`
+
+**Modified files:**
+- `internal/session/workspace.go`
+- `internal/engine/executor.go`
+- `cmd/nforge/session.go`
+- `cmd/nforge/serve.go`
+- `frontend/src/hooks/useWebSocket.ts`
+
+## Change Log
+
+- Implemented story 4.3: Fork, Git Auto-Commit & Time-Travel Debug (2026-05-04)
+  - Git auto-commit after each node completion with deterministic messages
+  - Session fork with workspace copy and Git branching
+  - Time-travel debug via Git checkout of node completion commits
+  - WebSocket `checkout_node` message type for UI-triggered time-travel
+  - CLI `nforge session fork <id>` command
+  - 16 new unit/integration tests (all passing)

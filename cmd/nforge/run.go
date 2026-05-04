@@ -7,6 +7,7 @@ import (
 
 	"github.com/nnlgsakib/nodeforge/internal/engine"
 	"github.com/nnlgsakib/nodeforge/internal/llm"
+	"github.com/nnlgsakib/nodeforge/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -113,6 +114,15 @@ func runSpecFile(cmd *cobra.Command, args []string) error {
 		provider = initLLMProvider()
 	}
 	exec := engine.NewExecutor(graph, provider, nil, nil, nil)
+
+	// Story 4.3: Wire up auto-commit via session manager
+	sessionMgr, err := session.NewManager(".")
+	if err == nil {
+		defer sessionMgr.Close()
+		exec.SetAutoCommitter(sessionMgr)
+		// Use graph ID as session identifier for auto-commit tracking
+		exec.SetSessionID("sess-" + graph.ID)
+	}
 
 	fmt.Printf("Executing graph: %s (%d nodes)\n", graph.ID, len(graph.Nodes))
 

@@ -17,6 +17,13 @@ export interface SkillInstallMessage {
   message?: string;
 }
 
+export interface CheckoutNodeResult {
+  sessionId: string;
+  nodeId: string;
+  success: boolean;
+  error?: string;
+}
+
 export interface UseWebSocketReturn {
   connected: boolean;
   monologueMessages: MonologueMessage[];
@@ -33,6 +40,7 @@ export interface UseWebSocketReturn {
   clearSkillInstallMessages: () => void;
   reconnect: () => void;
   sessionResumed: boolean;
+  checkoutResult: CheckoutNodeResult | null;
 }
 
 export interface SessionResumeMessage {
@@ -53,8 +61,10 @@ export function useWebSocket(): UseWebSocketReturn {
   const [edgeUpdateQueue, setEdgeUpdateQueue] = useState<unknown[]>([]);
   const [skillInstallMessages, setSkillInstallMessages] = useState<SkillInstallMessage[]>([]);
   const [sessionResumed, setSessionResumed] = useState(false);
+  const [checkoutResult, setCheckoutResult] = useState<CheckoutNodeResult | null>(null);
   const reconnectRef = useRef<(() => void) | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearGraphUpdates = useCallback(() => setGraphUpdateQueue([]), []);
   const clearNodeUpdates = useCallback(() => setNodeUpdateQueue([]), []);
@@ -136,6 +146,17 @@ export function useWebSocket(): UseWebSocketReturn {
               { skillId: data.skillId, status: 'failed', message: data.message },
             ]);
             break;
+          case 'checkout_node':
+            // Time-travel debug: workspace restored to node state (Story 4.3)
+            if (checkoutTimeoutRef.current) clearTimeout(checkoutTimeoutRef.current);
+            setCheckoutResult({
+              sessionId: data.sessionId,
+              nodeId: data.nodeId,
+              success: data.success,
+              error: data.error,
+            });
+            checkoutTimeoutRef.current = setTimeout(() => setCheckoutResult(null), 5000);
+            break;
         }
       } catch {
         // Ignore parse errors
@@ -149,6 +170,10 @@ export function useWebSocket(): UseWebSocketReturn {
       if (streamTimeoutRef.current) {
         clearTimeout(streamTimeoutRef.current);
         streamTimeoutRef.current = null;
+      }
+      if (checkoutTimeoutRef.current) {
+        clearTimeout(checkoutTimeoutRef.current);
+        checkoutTimeoutRef.current = null;
       }
     };
 
@@ -217,6 +242,17 @@ export function useWebSocket(): UseWebSocketReturn {
               { skillId: data.skillId, status: 'failed', message: data.message },
             ]);
             break;
+          case 'checkout_node':
+            // Time-travel debug: workspace restored to node state (Story 4.3)
+            if (checkoutTimeoutRef.current) clearTimeout(checkoutTimeoutRef.current);
+            setCheckoutResult({
+              sessionId: data.sessionId,
+              nodeId: data.nodeId,
+              success: data.success,
+              error: data.error,
+            });
+            checkoutTimeoutRef.current = setTimeout(() => setCheckoutResult(null), 5000);
+            break;
         }
       } catch {
         // Ignore parse errors
@@ -246,6 +282,9 @@ export function useWebSocket(): UseWebSocketReturn {
       if (resumeTimerRef.current) {
         clearTimeout(resumeTimerRef.current);
       }
+      if (checkoutTimeoutRef.current) {
+        clearTimeout(checkoutTimeoutRef.current);
+      }
       ws.close();
     };
   }, []);
@@ -266,5 +305,6 @@ export function useWebSocket(): UseWebSocketReturn {
     clearSkillInstallMessages,
     reconnect,
     sessionResumed,
+    checkoutResult,
   };
 }

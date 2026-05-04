@@ -18,12 +18,19 @@ type NodeUpdateBroadcaster interface {
 	BroadcastRaw(data []byte)
 }
 
+// NodeAutoCommitter abstracts Git auto-commit after node completion (Story 4.3)
+type NodeAutoCommitter interface {
+	AutoCommit(sessionID, nodeID, status string) error
+}
+
 // Executor runs nodes sequentially with retry until acceptance criteria are met
 type Executor struct {
 	graph             *Graph
 	llmProv           llm.LLMProvider
 	store             *nfContext.Store
-	hub               NodeUpdateBroadcaster // WebSocket hub for real-time updates
+	hub               NodeUpdateBroadcaster    // WebSocket hub for real-time updates
+	autoCommitter     NodeAutoCommitter        // Git auto-commit after node completion (Story 4.3)
+	sessionID         string                   // Current session ID for auto-commit (Story 4.3)
 	monologueMessages  []nfContext.MonologueMessage
 	currentNodeID     string
 	contextAssembler  *nfContext.ContextAssembler // Context assembly for LLM calls (Task 5)
@@ -55,6 +62,16 @@ func (e *Executor) SetSwarm(swarm *llm.Swarm, config *llm.SwarmConfig) {
 	if config != nil {
 		e.swarmConfig = config
 	}
+}
+
+// SetAutoCommitter configures Git auto-commit after node completion (Story 4.3)
+func (e *Executor) SetAutoCommitter(ac NodeAutoCommitter) {
+	e.autoCommitter = ac
+}
+
+// SetSessionID sets the current session ID for auto-commit (Story 4.3)
+func (e *Executor) SetSessionID(id string) {
+	e.sessionID = id
 }
 
 // resolveChangedNodes uses Merkle tree hashing to determine which nodes need re-execution.
@@ -170,6 +187,14 @@ func (e *Executor) Run(ctx context.Context) error {
 				}
 
 				e.updateNodeStatus(ctx, node.ID, NodeStatusComplete, 1.0)
+
+				// Story 4.3: Auto-commit workspace changes after node completion
+				if e.autoCommitter != nil && e.sessionID != "" {
+					if acErr := e.autoCommitter.AutoCommit(e.sessionID, node.ID, string(NodeStatusComplete)); acErr != nil {
+						// Log but don't fail node execution — git is best-effort
+						fmt.Printf("Warning: auto-commit failed for node %s: %v\n", node.ID, acErr)
+					}
+				}
 
 				// Auto-spec generation (AC3 - FR19)
 				if e.specGen != nil {

@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -180,4 +181,37 @@ func (m *Manager) ReadWorkspaceFile(sessionID, relativePath string) ([]byte, err
 	}
 
 	return os.ReadFile(resolvedPath)
+}
+
+// InitGitRepo initializes a Git repository in the session's workspace directory.
+// It runs `git init` and configures basic settings. Safe to call multiple times.
+func InitGitRepo(workspaceDir string) error {
+	if _, err := os.Stat(workspaceDir); os.IsNotExist(err) {
+		return fmt.Errorf("workspace directory does not exist: %s", workspaceDir)
+	}
+
+	// Skip if already a git repo
+	if isGitRepo(workspaceDir) {
+		return nil
+	}
+
+	cmd := exec.Command("git", "init")
+	cmd.Dir = workspaceDir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git init failed: %s: %w", string(output), err)
+	}
+
+	// Configure default user for commits (can be overridden by user)
+	cmd = exec.Command("git", "config", "user.email", "nforge@local")
+	cmd.Dir = workspaceDir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git config email failed: %s: %w", string(output), err)
+	}
+	cmd = exec.Command("git", "config", "user.name", "NodeForge")
+	cmd.Dir = workspaceDir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git config name failed: %s: %w", string(output), err)
+	}
+
+	return nil
 }
