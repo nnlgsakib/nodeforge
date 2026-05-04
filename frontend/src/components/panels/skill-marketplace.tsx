@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { EmptyState } from '../ui/EmptyState';
 
 interface Skill {
   id: string;
@@ -40,12 +41,15 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+type SortOption = 'name' | 'rating' | 'installs' | 'recent';
+
 export const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ open, onOpenChange }) => {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('name');
 
   // Fetch skills from backend
   const fetchSkills = useCallback(async () => {
@@ -85,9 +89,10 @@ export const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ open, onOpen
       }
       const data = await res.json();
       // Update installed status for all installed skills
+      const installedIds = Array.isArray(data.installed) ? data.installed : [];
       setSkills((prev) =>
         prev.map((s) =>
-          data.installed.includes(s.id) ? { ...s, installed: true } : s
+          installedIds.includes(s.id) ? { ...s, installed: true } : s
         )
       );
     } catch (err) {
@@ -104,18 +109,40 @@ export const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ open, onOpen
   }, [onOpenChange]);
 
   // Get unique categories
-  const categories = ['all', ...Array.from(new Set(skills.map((s) => s.category)))];
+  const categories = useMemo(() => ['all', ...Array.from(new Set(skills.map((s) => s.category)))], [skills]);
 
-  // Filter by search query
-  const filteredSkills = skills.filter((s) => {
-    if (searchQuery === '') return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q) ||
-      s.tags.some((t) => t.toLowerCase().includes(q))
-    );
-  });
+  // Filter and sort skills
+  const filteredSkills = useMemo(() => {
+    let result = skills.filter((s) => {
+      if (filterCategory !== 'all' && s.category !== filterCategory) return false;
+      if (searchQuery === '') return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        (s.name ?? '').toLowerCase().includes(q) ||
+        (s.description ?? '').toLowerCase().includes(q) ||
+        s.tags.some((t) => t.toLowerCase().includes(q))
+      );
+    });
+
+    // Apply sorting
+    result = [...result].sort((a, b) => {
+      switch (sortOption) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'rating':
+          return b.rating - a.rating;
+        case 'installs':
+          return b.downloads - a.downloads;
+        case 'recent':
+          // Would need a createdAt field; fallback to id comparison
+          return b.id.localeCompare(a.id);
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [skills, searchQuery, sortOption, filterCategory]);
 
   if (!open) return null;
 
@@ -160,26 +187,63 @@ export const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ open, onOpen
               </button>
             ))}
           </div>
+          <div className="skill-marketplace-sort">
+            <label htmlFor="skill-sort" className="sr-only">Sort skills by</label>
+            <select
+              id="skill-sort"
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as SortOption)}
+              style={{
+                padding: '6px 8px',
+                border: '1px solid var(--bg-tertiary)',
+                borderRadius: '6px',
+                background: 'var(--bg-primary)',
+                color: 'var(--text-secondary)',
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="name">Sort: Name</option>
+              <option value="rating">Sort: Rating</option>
+              <option value="installs">Sort: Installs</option>
+              <option value="recent">Sort: Recent</option>
+            </select>
+          </div>
         </div>
 
         {loading && (
-          <div className="skill-marketplace-loading" role="status" aria-live="polite">
-            Loading skills...
-          </div>
+          <EmptyState icon={<span aria-hidden="true">⏳</span>} title="Loading skills..." animated />
         )}
 
         {error && (
-          <div className="skill-marketplace-error" role="alert">
-            {error}
-          </div>
+          <EmptyState
+            icon={<span aria-hidden="true">⚠️</span>}
+            title="Failed to load skills"
+            description={error}
+          />
         )}
 
-        {!loading && !error && (
+        {!loading && !error && skills.length === 0 && (
+          <EmptyState
+            icon={<span aria-hidden="true">🔌</span>}
+            title="No Skills Installed"
+            description="Browse the marketplace to discover and install skills"
+          />
+        )}
+
+        {!loading && !error && skills.length > 0 && (
           <div className="skill-marketplace-grid">
-            {filteredSkills.map((skill) => (
+            {filteredSkills.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden="true">🕭</span>}
+                title="No skills match your search"
+                description="Try adjusting your filters or search terms"
+              />
+            ) : (
+              filteredSkills.map((skill) => (
               <div key={skill.id} className="skill-card">
                 <div className="skill-card-header">
-                  <div className="skill-icon">{skill.icon.charAt(0).toUpperCase()}</div>
+                  <div className="skill-icon">{(skill.icon || '?').charAt(0).toUpperCase()}</div>
                   <div className="skill-card-title">
                     <h3>{skill.name}</h3>
                     <span className="skill-version">v{skill.version}</span>
@@ -211,7 +275,8 @@ export const SkillMarketplace: React.FC<SkillMarketplaceProps> = ({ open, onOpen
                   )}
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
         )}
       </div>

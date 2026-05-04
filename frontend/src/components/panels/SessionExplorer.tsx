@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { EmptyState } from '../ui/EmptyState';
 
 interface Session {
   sessionId: string;
@@ -14,6 +15,7 @@ interface SessionExplorerProps {
   onForkSession?: (sessionId: string) => void;
   onExportSession?: (sessionId: string) => void;
   onSelectSession?: (sessionId: string) => void;
+  onStartChat?: () => void;
 }
 
 type StatusFilter = 'all' | 'running' | 'complete' | 'failed' | 'paused';
@@ -32,6 +34,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
   onForkSession,
   onExportSession,
   onSelectSession,
+  onStartChat,
 }) => {
   const [projectName, setProjectName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -53,7 +56,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
         return;
       }
       const data = await response.json();
-      setSessions(data.data || []);
+      setSessions(Array.isArray(data.data) ? data.data : []);
     } catch {
       // Fallback to mock data
       console.warn('Failed to fetch sessions, using mock data');
@@ -73,8 +76,10 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
       setIsCreating(true);
       try {
         await onCreateProject(trimmed);
-      } finally {
         setProjectName('');
+      } catch (err) {
+        console.error('Failed to create project:', err);
+      } finally {
         setIsCreating(false);
       }
     }
@@ -82,6 +87,12 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
 
   // Filter sessions
   const filteredSessions = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - todayStart.getDay());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
     return sessions.filter((session) => {
       // Search filter (case-insensitive project name)
       if (searchQuery && !session.projectName.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -94,11 +105,6 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
       // Date filter
       if (dateFilter !== 'all') {
         const created = new Date(session.createdAt);
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const weekStart = new Date(todayStart);
-        weekStart.setDate(weekStart.getDate() - todayStart.getDay());
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
         if (dateFilter === 'today' && created < todayStart) return false;
         if (dateFilter === 'week' && created < weekStart) return false;
@@ -180,6 +186,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
         placeholder="Search by project name..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
+        aria-label="Search sessions"
         style={{
           width: '100%',
           padding: '6px 8px',
@@ -198,6 +205,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          aria-label="Filter by status"
           style={{
             flex: 1,
             padding: '4px 6px',
@@ -217,6 +225,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
         <select
           value={dateFilter}
           onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+          aria-label="Filter by date"
           style={{
             flex: 1,
             padding: '4px 6px',
@@ -236,33 +245,32 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
 
       {/* Session List */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-          Loading sessions...
-        </div>
+        <EmptyState
+          icon={<span aria-hidden="true">⏳</span>}
+          title="Loading sessions..."
+          animated
+        />
+      ) : sessions.length === 0 ? (
+        <EmptyState
+          icon={<span aria-hidden="true">📭</span>}
+          title="No sessions yet"
+          description="Start a new project to begin your journey"
+          actionLabel="Start Chat"
+          onAction={onStartChat}
+        />
       ) : filteredSessions.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-          No sessions found
+          No sessions match your filters
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {filteredSessions.map((session) => (
             <div
               key={session.sessionId}
-              style={{
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--bg-tertiary)',
-                borderRadius: '8px',
-                padding: '10px',
-                cursor: 'pointer',
-                transition: 'border-color 200ms',
-              }}
+              className="session-card"
+              tabIndex={0}
               onClick={() => onSelectSession?.(session.sessionId)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--accent)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--bg-tertiary)';
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectSession?.(session.sessionId); } }}
             >
               {/* Session Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -315,24 +323,13 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
                     e.stopPropagation();
                     onForkSession?.(session.sessionId);
                   }}
+                  className="btn-secondary"
                   style={{
                     flex: 1,
                     padding: '4px 8px',
                     fontSize: '11px',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-secondary)',
-                    border: '1px solid var(--bg-tertiary)',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    transition: 'color 200ms, border-color 200ms',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                    e.currentTarget.style.borderColor = 'var(--accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                    e.currentTarget.style.borderColor = 'var(--bg-tertiary)';
                   }}
                 >
                   Fork
@@ -342,24 +339,13 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
                     e.stopPropagation();
                     onExportSession?.(session.sessionId);
                   }}
+                  className="btn-secondary"
                   style={{
                     flex: 1,
                     padding: '4px 8px',
                     fontSize: '11px',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-secondary)',
-                    border: '1px solid var(--bg-tertiary)',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    transition: 'color 200ms, border-color 200ms',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                    e.currentTarget.style.borderColor = 'var(--accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                    e.currentTarget.style.borderColor = 'var(--bg-tertiary)';
                   }}
                 >
                   Export

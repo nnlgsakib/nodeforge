@@ -4,6 +4,7 @@ import { exportMonologueAsMarkdown } from '../../utils/monologue-export';
 import type { MonologueMessage } from '../../hooks/useWebSocket';
 import { useAnnounce } from '../../hooks/use-announce';
 import { useRtl } from '../../hooks/use-rtl';
+import { EmptyState } from '../ui/EmptyState';
 
 interface MonologuePanelProps {
   collapsed: boolean;
@@ -108,7 +109,7 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
             right: isRtl ? 'auto' : 0,
             left: isRtl ? 0 : 'auto',
             bottom: 0,
-            width: '400px',
+            width: 'var(--monologue-panel-width, 400px)',
             background: 'var(--bg-secondary)',
             borderLeft: isRtl ? 'none' : '1px solid var(--bg-tertiary)',
             borderRight: isRtl ? '1px solid var(--bg-tertiary)' : 'none',
@@ -247,16 +248,12 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
             aria-label="Monologue messages"
           >
             {messages.length === 0 ? (
-              <div
-                style={{
-                  color: 'var(--text-secondary)',
-                  fontStyle: 'italic',
-                  textAlign: 'center',
-                  marginTop: '40px',
-                }}
-              >
-                LLM thoughts will appear here during graph execution...
-              </div>
+              <EmptyState
+                icon={<span aria-hidden="true">🕭</span>}
+                title="Waiting..."
+                description="LLM thoughts will appear here during graph execution"
+                animated
+              />
             ) : (
               <>
                 {messages.length > 100 && (

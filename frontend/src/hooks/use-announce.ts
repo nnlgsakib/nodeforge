@@ -8,7 +8,8 @@ type AnnouncementType = 'polite' | 'assertive';
  * Usage: const announce = useAnnounce(); announce('Node changed to running');
  */
 export function useAnnounce() {
-  const { announce } = useContext(AriaAnnouncerContext);
+  const ctx = useContext(AriaAnnouncerContext);
+  const announce = ctx?.announce ?? ((_: string, __?: AnnouncementType) => {});
   const announceRef = useRef(announce);
 
   // Keep ref in sync

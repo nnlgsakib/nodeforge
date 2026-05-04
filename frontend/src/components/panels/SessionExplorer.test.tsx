@@ -105,9 +105,12 @@ describe('SessionExplorer', () => {
       expect(screen.getByText(/test-suite/i)).toBeInTheDocument();
     });
 
-    const resumeButton = screen.getByRole('button', { name: /resume/i });
+    // Multiple sessions have Resume buttons; find the one within the test-suite card
+    const resumeButtons = screen.getAllByRole('button', { name: /resume/i });
+    const testSuiteCard = screen.getByText(/test-suite/i).closest('.session-card');
+    const testSuiteResumeButton = testSuiteCard?.querySelector('button');
     await act(async () => {
-      fireEvent.click(resumeButton);
+      fireEvent.click(testSuiteResumeButton!);
     });
 
     expect(mockResume).toHaveBeenCalledWith('mock-4');
@@ -164,5 +167,44 @@ describe('SessionExplorer', () => {
     await act(async () => {
       fireEvent.change(dateSelect, { target: { value: 'today' } });
     });
+  });
+
+  it('shows empty state with Start Chat button when no sessions exist', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [] }),
+    } as unknown as Response);
+
+    const handleStartChat = vi.fn();
+    render(<SessionExplorer onCreateProject={vi.fn()} onStartChat={handleStartChat} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No sessions yet')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Start a new project to begin your journey')).toBeInTheDocument();
+    const startBtn = screen.getByRole('button', { name: 'Start Chat' });
+    expect(startBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+    expect(handleStartChat).toHaveBeenCalled();
+  });
+
+  it('shows no match message when filter returns no results', async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error('API not available'));
+
+    render(<SessionExplorer onCreateProject={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/nfv2-auth-module/i)).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText(/search by project name/i);
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: 'zzznonexistent' } });
+    });
+
+    expect(screen.getByText('No sessions match your filters')).toBeInTheDocument();
   });
 });

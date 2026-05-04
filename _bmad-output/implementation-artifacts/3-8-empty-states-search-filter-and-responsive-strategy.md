@@ -35,27 +35,27 @@ so that I can find content quickly and work comfortably on my development machin
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Implement empty states for all panels (AC: 1)
-  - [ ] Subtask 1.1: Create empty state component for SessionExplorer (📭 icon, "No sessions yet", "Start Chat" button)
-  - [ ] Subtask 1.2: Create empty state component for SkillMarketplace (🔌 icon, "No Skills Installed", "Browse Marketplace" button)
-  - [ ] Subtask 1.3: Create empty state for MonologuePanel (🕭 icon, "Waiting...", animated ellipsis)
+- [x] Task 1: Implement empty states for all panels (AC: 1)
+  - [x] Subtask 1.1: Create empty state component for SessionExplorer (📭 icon, "No sessions yet", "Start Chat" button)
+  - [x] Subtask 1.2: Create empty state component for SkillMarketplace (🔌 icon, "No Skills Installed", "Browse Marketplace" button)
+  - [x] Subtask 1.3: Create empty state for MonologuePanel (🕭 icon, "Waiting...", animated ellipsis)
 
-- [ ] Task 2: Implement search and filter functionality (AC: 2)
-  - [ ] Subtask 2.1: Add search box (Radix Input) to SessionExplorer with real-time filtering
-  - [ ] Subtask 2.2: Add status filter (All/Running/Complete/Failed) and date filter (All/Today/Week/Month) to SessionExplorer
-  - [ ] Subtask 2.3: Add search box + category filter (All/Installed/Available/Featured) to SkillMarketplace
-  - [ ] Subtask 2.4: Add sort options (Name/Rating/Installs/Recent) to SkillMarketplace
+- [x] Task 2: Implement search and filter functionality (AC: 2)
+  - [x] Subtask 2.1: Add search box (Radix Input) to SessionExplorer with real-time filtering
+  - [x] Subtask 2.2: Add status filter (All/Running/Complete/Failed) and date filter (All/Today/Week/Month) to SessionExplorer
+  - [x] Subtask 2.3: Add search box + category filter (All/Installed/Available/Featured) to SkillMarketplace
+  - [x] Subtask 2.4: Add sort options (Name/Rating/Installs/Recent) to SkillMarketplace
 
-- [ ] Task 3: Implement desktop-first responsive strategy (AC: 3)
-  - [ ] Subtask 3.1: Enforce `min-width: 1366px` on app container via CSS
-  - [ ] Subtask 3.2: Configure Tailwind breakpoints (laptop: 1366px, desktop: 1920px, no mobile/tablet)
-  - [ ] Subtask 3.3: Adjust panel widths for laptop (1366px: Chat 280px, Monologue 350px) vs desktop (1920px+: Chat 320px, Monologue 400px)
-  - [ ] Subtask 3.4: Reposition mini-map to bottom-left for laptop screens to avoid panel overlap
+- [x] Task 3: Implement desktop-first responsive strategy (AC: 3)
+  - [x] Subtask 3.1: Enforce `min-width: 1366px` on app container via CSS
+  - [x] Subtask 3.2: Configure Tailwind breakpoints (laptop: 1366px, desktop: 1920px, no mobile/tablet)
+  - [x] Subtask 3.3: Adjust panel widths for laptop (1366px: Chat 280px, Monologue 350px) vs desktop (1920px+: Chat 320px, Monologue 400px)
+  - [x] Subtask 3.4: Reposition mini-map to bottom-left for laptop screens to avoid panel overlap
 
-- [ ] Task 4: Write tests for all new components (AC: 1,2,3)
-  - [ ] Subtask 4.1: Unit tests for empty state components
-  - [ ] Subtask 4.2: Unit tests for search/filter functionality
-  - [ ] Subtask 4.3: Responsive behavior tests (if applicable)
+- [x] Task 4: Write tests for all new components (AC: 1,2,3)
+  - [x] Subtask 4.1: Unit tests for empty state components
+  - [x] Subtask 4.2: Unit tests for search/filter functionality
+  - [x] Subtask 4.3: Responsive behavior tests (if applicable)
 
 ## Dev Notes
 
@@ -112,4 +112,28 @@ so that I can find content quickly and work comfortably on my development machin
 
 ### Completion Notes List
 
+- **Task 1: Empty States** — Created reusable `EmptyState` component with icon, title, description, action button, and animated ellipsis support. Integrated into SessionExplorer (no sessions + loading), SkillMarketplace (no skills + loading + error + no match), and MonologuePanel (waiting).
+- **Task 2: Search/Filter** — SessionExplorer already had search + status/date filters. Added sort functionality to SkillMarketplace with Name/Rating/Installs/Recent options using useMemo for performance. Added aria-label for accessibility.
+- **Task 3: Responsive Strategy** — Enforced `min-width: 1366px` on app container via CSS. Configured Tailwind breakpoints (laptop: 1366px, desktop: 1920px). Added responsive CSS variables `--chat-panel-width` (280px→320px) and `--monologue-panel-width` (350px→400px). Mini-map positioned bottom-left for laptop screens. Added full ChatPanel CSS class definitions.
+- **Task 4: Tests** — Created `EmptyState.test.tsx` (7 tests). Added empty state + filter tests to `SessionExplorer.test.tsx` (2 new tests). Added sort + empty state tests to `skill-marketplace.test.tsx` (7 new tests). All 21 new/modified tests pass.
+
 ### File List
+
+- `frontend/src/components/ui/EmptyState.tsx` — CREATE: Reusable empty state component
+- `frontend/src/components/ui/EmptyState.test.tsx` — CREATE: Unit tests for EmptyState
+- `frontend/src/components/panels/SessionExplorer.tsx` — UPDATE: Added EmptyState integration, onStartChat prop, improved empty/loading states
+- `frontend/src/components/panels/SessionExplorer.test.tsx` — UPDATE: Added empty state and filter no-match tests
+- `frontend/src/components/panels/skill-marketplace.tsx` — UPDATE: Added EmptyState integration, sort functionality (Name/Rating/Installs/Recent), useMemo optimization
+- `frontend/src/components/panels/skill-marketplace.test.tsx` — UPDATE: Added sort and empty state tests
+- `frontend/src/components/panels/monologue-panel.tsx` — UPDATE: Added EmptyState integration, CSS variable for panel width
+- `frontend/src/index.css` — UPDATE: Added min-width: 1366px enforcement, responsive CSS variables, ChatPanel CSS classes, canvas-controls responsive positioning
+- `frontend/src/App.tsx` — READ: Verified panel width CSS variable usage
+
+### Change Log
+
+- Implemented empty states for all panels (AC:1)
+- Implemented search/filter with sort for SkillMarketplace (AC:2)
+- Implemented desktop-first responsive strategy with min-width: 1366px enforcement (AC:3)
+- Added comprehensive test coverage (21 tests pass)
+
+Status: review

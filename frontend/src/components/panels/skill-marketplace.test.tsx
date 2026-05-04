@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { SkillMarketplace } from './skill-marketplace';
 
 // Mock fetch globally
@@ -180,8 +180,103 @@ describe('SkillMarketplace', () => {
       render(<SkillMarketplace {...defaultProps} />);
 
       await waitFor(() => {
-        expect(screen.getByRole('alert')).toBeTruthy();
+        expect(screen.getByText('Failed to load skills')).toBeTruthy();
       });
+    });
+  });
+
+  describe('sort', () => {
+    it('should render sort selector dropdown', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSkills),
+      });
+
+      render(<SkillMarketplace {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Sort skills by')).toBeTruthy();
+      });
+    });
+
+    it('should sort skills by rating when selected', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSkills),
+      });
+
+      render(<SkillMarketplace {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Code Review')).toBeTruthy();
+      });
+
+      const sortSelect = screen.getByLabelText('Sort skills by');
+      await act(async () => {
+        fireEvent.change(sortSelect, { target: { value: 'rating' } });
+      });
+
+      // Code Review (4.5) should appear before Test Generator (4.2)
+      const cards = screen.getAllByRole('heading', { level: 3 });
+      expect(cards[0].textContent).toBe('Code Review');
+      expect(cards[1].textContent).toBe('Test Generator');
+    });
+
+    it('should sort skills by installs when selected', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSkills),
+      });
+
+      render(<SkillMarketplace {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Code Review')).toBeTruthy();
+      });
+
+      const sortSelect = screen.getByLabelText('Sort skills by');
+      await act(async () => {
+        fireEvent.change(sortSelect, { target: { value: 'installs' } });
+      });
+
+      const cards = screen.getAllByRole('heading', { level: 3 });
+      expect(cards[0].textContent).toBe('Code Review');
+      expect(cards[1].textContent).toBe('Test Generator');
+    });
+  });
+
+  describe('empty states', () => {
+    it('should show no skills empty state when no skills available', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ skills: [] }),
+      });
+
+      render(<SkillMarketplace {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('No Skills Installed')).toBeTruthy();
+      });
+    });
+
+    it('should show no match empty state when search returns no results', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSkills),
+      });
+
+      render(<SkillMarketplace {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Code Review')).toBeTruthy();
+      });
+
+      const searchInput = screen.getByPlaceholderText('Search skills...');
+      await act(async () => {
+        fireEvent.change(searchInput, { target: { value: 'zzznonexistent' } });
+      });
+
+      expect(screen.getByText('No skills match your search')).toBeTruthy();
     });
   });
 });
