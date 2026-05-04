@@ -138,15 +138,25 @@ function useEdgeInteraction() {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [tooltipId] = useState(() => `edge-tooltip-${Math.random().toString(36).slice(2, 9)}`);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null); // M15: throttle mouse-move updates
 
   const handleMouseEnter = useCallback((e: React.MouseEvent) => {
     setShowTooltip(true);
     setTooltipPos({ x: e.clientX, y: e.clientY - 40 });
   }, []);
 
+  // M15: Throttle tooltip position updates with requestAnimationFrame
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (showTooltip) {
-      setTooltipPos({ x: e.clientX, y: e.clientY - 40 });
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      const x = e.clientX;
+      const y = e.clientY - 40;
+      rafRef.current = requestAnimationFrame(() => {
+        setTooltipPos({ x, y });
+        rafRef.current = null;
+      });
     }
   }, [showTooltip]);
 
@@ -159,6 +169,9 @@ function useEdgeInteraction() {
   }, []);
 
   const handlePointerDown = useCallback(() => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+    }
     pressTimer.current = setTimeout(() => {
       setShowBubble(true);
     }, LONG_PRESS_DURATION);
@@ -178,19 +191,42 @@ function useEdgeInteraction() {
       if (pressTimer.current) {
         clearTimeout(pressTimer.current);
       }
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
     };
   }, []);
+
+  // M12: Dismiss bubble on Escape key
+  useEffect(() => {
+    if (showBubble) {
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setShowBubble(false);
+        }
+      };
+      window.addEventListener('keydown', handleEscape);
+      return () => window.removeEventListener('keydown', handleEscape);
+    }
+  }, [showBubble]);
 
   // Dismiss bubble on outside click with deferred timing to avoid race (P6)
   useEffect(() => {
     if (showBubble) {
-      const dismiss = () => setShowBubble(false);
+      let listenerAdded = false;
+      const dismiss = () => {
+        listenerAdded = false;
+        setShowBubble(false);
+      };
       const timer = setTimeout(() => {
+        listenerAdded = true;
         window.addEventListener('click', dismiss, { once: true });
       }, 100);
       return () => {
         clearTimeout(timer);
-        window.removeEventListener('click', dismiss);
+        if (listenerAdded) {
+          window.removeEventListener('click', dismiss);
+        }
       };
     }
   }, [showBubble]);
@@ -290,16 +326,16 @@ const DefaultEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
   );
 };
 
-// Active Edge - #06b6d4, 3px stroke, animated dash flow with heartbeat pulse
+// Active Edge - #06b6d4, 3px stroke, heartbeat ECG double-pulse
 const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
   const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
   const { isHighContrast: hc } = useTheme();
 
-  // Heartbeat: faster dash animation based on tension (higher tension = faster pulse)
+  // Heartbeat: ECG double-pulse rate scales with tension (higher tension = faster pulse)
   const rawTension = (data as AppEdgeData & { tension?: number })?.tension ?? 0;
   const tension = Math.min(1, Math.max(0, rawTension));
-  const heartbeatDuration = Math.max(0.3, 1 - tension * 0.7); // 1s at tension=0, 0.3s at tension=1
+  const heartbeatDuration = Math.max(0.5, 1.5 - tension * 1.0); // 1.5s at tension=0, 0.5s at tension=1
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
@@ -317,7 +353,7 @@ const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: hc ? HC_COLORS.active : '#06b6d4', strokeWidth: selected ? 4 : 3, strokeDasharray: '12 6', animation: `flow ${heartbeatDuration}s linear infinite`, ...style }}
+        style={{ stroke: hc ? HC_COLORS.active : '#06b6d4', strokeWidth: selected ? 4 : 3, strokeDasharray: '12 6', animation: `heartbeat ${heartbeatDuration}s ease-in-out infinite`, ...style }}
       />
     </EdgeWrapper>
   );
@@ -330,7 +366,7 @@ const TensionEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
   const { isHighContrast: hc } = useTheme();
 
   // Dynamic stroke-width: scales from 3px to 6px based on tension
-  const rawTension = (data as AppEdgeData & { tension?: number })?.tension ?? 0.7;
+  const rawTension = (data as AppEdgeData & { tension?: number })?.tension ?? 0;
   const tension = Math.min(1, Math.max(0, rawTension));
   const dynamicStrokeWidth = 3 + (tension * 3); // 3px at tension=0, 6px at tension=1
 

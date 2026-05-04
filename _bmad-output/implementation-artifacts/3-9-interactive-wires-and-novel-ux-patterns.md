@@ -205,3 +205,25 @@ so that the canvas is fast, informative, and revolutionary.
 ### Change Log
 
 - Implemented story 3.9: Interactive Wires & Novel UX Patterns (Date: 2026-05-04)
+- Fixed code review findings (Date: 2026-05-04):
+  - **H1**: Added worker `error` event handler in `useLayoutWorker.ts` to reject pending promise on runtime errors
+  - **H4**: Wrapped `onSkipNode`, `onForkSession`, `onRetryNode` in `useCallback` in `App.tsx` to prevent keyboard listener thrash
+  - **H2**: Added `e.repeat` guard in `useKeyboardShortcuts.ts` to prevent shortcuts firing on held keys
+  - **M1**: Fixed `TensionEdgeComponent` tension default from `0.7` to `0` in `EdgeTypes.tsx`
+  - **M4**: Added existing timer clearance in `handlePointerDown` in `EdgeTypes.tsx` to prevent multiple timers on rapid presses
+  - **M3**: Fixed event listener leak in bubble dismiss effect in `EdgeTypes.tsx` using `listenerAdded` ref guard
+  - **M16**: Moved `flow` and `pulse-success` keyframes from `@layer components` to `@layer base` in `index.css` to prevent tree-shaking
+  - **M6**: Added forward-only status guard in `App.tsx` — prevents node status regression in both announcement effect and `handleNodeUpdate`
+  - **M7**: Pruned `prevStatusesRef` for removed nodes in `App.tsx` to prevent unbounded memory growth
+  - **M11**: Changed REC indicator to use `aria-live="polite"` in `monologue-panel.tsx` for screen reader announcements
+  - **M12**: Added Escape key dismiss for metadata bubble in `EdgeTypes.tsx`
+  - **M13**: Added `connected` guard to keyboard shortcuts — `sendMessage` only fires when WebSocket is connected
+  - **M15**: Throttled mouse-move tooltip updates with `requestAnimationFrame` in `EdgeTypes.tsx` to prevent re-render storms
+  - **M9**: Improved EdgeTypes tests to assert computed style values (stroke-width, animation duration)
+  - **M10**: Added PhaseBands test to verify spec color hex values
+  - **L1**: Added 5s worker timeout in `useLayoutWorker.ts` — rejects promise if worker doesn't respond
+  - **L2**: Improved `crypto.randomUUID` fallback in `App.tsx` with counter+timestamp approach for near-zero collision probability
+  - **L3**: Replaced dash-speed "heartbeat" with true ECG double-pulse (lub-dub) animation in `EdgeTypes.tsx` and `index.css`
+  - **L4**: Removed hard `min-width: 1366px` constraint, added responsive `overflow-x: auto` for small screens in `index.css`
+  - **L5**: Replaced `window.confirm` with custom accessible confirm dialog in `monologue-panel.tsx`
+  - **L6**: Restructured `useLayoutWorker.ts` to use single persistent message listener instead of per-call add/remove

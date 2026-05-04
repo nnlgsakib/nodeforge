@@ -31,7 +31,15 @@ import { useAnnounce } from './hooks/use-announce';
 import { useKeyboardNav } from './hooks/use-keyboard-nav';
 import { useRtl } from './hooks/use-rtl';
 
-// P8: Hoisted outside component to avoid recreation every render
+// L2: Unique ID generator with collision-resistant fallback
+let _idCounter = 0;
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID().slice(0, 8);
+  }
+  // Counter + timestamp + random for near-zero collision probability
+  return `${Date.now().toString(36)}-${(++_idCounter).toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
 const FILE_TO_NODE_TYPE: Record<string, string> = {
   'go.mod': 'implement',
   'go.sum': 'implement',
@@ -95,6 +103,16 @@ function AppInner() {
   const prevStatusesRef = useRef<Record<string, string>>({});
   const announce = useAnnounce();
 
+  // Status progression ordering: a node should never regress to an earlier phase
+  // unless explicitly reset by backend. Guard prevents accidental regression.
+  const STATUS_ORDER: Record<string, number> = {
+    pending: 0,
+    running: 1,
+    complete: 2,
+    failed: 2,
+    skipped: 2,
+  };
+
   // Detect node status changes and announce via ARIA live regions (AC:3, Subtask 3.3-3.4)
   useEffect(() => {
     const currentStatuses: Record<string, string> = {};
@@ -105,9 +123,24 @@ function AppInner() {
       if (status) {
         currentStatuses[node.id] = status;
         if (prevStatusesRef.current[node.id] !== status) {
+          // Forward-only guard: skip regression unless previous status is unknown
+          const prevStatus = prevStatusesRef.current[node.id];
+          if (prevStatus && STATUS_ORDER[status] !== undefined && STATUS_ORDER[prevStatus] !== undefined) {
+            if (STATUS_ORDER[status] < STATUS_ORDER[prevStatus]) {
+              continue; // Skip regression
+            }
+          }
           const label = String((node as any).data?.label ?? node.id);
           changed.push({ id: node.id, label, status });
         }
+      }
+    }
+
+    // Prune prevStatusesRef for removed nodes (M7)
+    const currentNodeIds = new Set(nodes.map((n) => n.id));
+    for (const key of Object.keys(prevStatusesRef.current)) {
+      if (!currentNodeIds.has(key)) {
+        delete prevStatusesRef.current[key];
       }
     }
 
@@ -227,11 +260,19 @@ function AppInner() {
         setNodes((nds) =>
           nds.map((node) => {
             if (node.id === data.nodeId) {
+              const currentStatus = node.data?.status as string | undefined;
+              const newStatus = (data.status || currentStatus) as string;
+              // Forward-only guard: prevent status regression
+              if (currentStatus && STATUS_ORDER[newStatus] !== undefined && STATUS_ORDER[currentStatus] !== undefined) {
+                if (STATUS_ORDER[newStatus] < STATUS_ORDER[currentStatus]) {
+                  return node; // Reject regression, keep current state
+                }
+              }
               return {
                 ...node,
                 data: {
                   ...node.data,
-                  status: data.status || node.data?.status,
+                  status: newStatus,
                   progress: data.progress ?? node.data?.progress,
                 },
               };
@@ -268,15 +309,21 @@ function AppInner() {
     clearEdgeUpdates();
   }, [edgeUpdateQueue, setEdges, clearEdgeUpdates]);
 
+  // Wrap keyboard action callbacks in useCallback to prevent effect thrash
+  const handleSkipNode = useCallback(() => sendMessage({ type: 'skip_node' }), [sendMessage]);
+  const handleForkSession = useCallback(() => sendMessage({ type: 'fork_session' }), [sendMessage]);
+  const handleRetryNode = useCallback(() => sendMessage({ type: 'retry_node' }), [sendMessage]);
+
   // Keyboard shortcuts via dedicated hook
   useKeyboardShortcuts({
     onToggleMonologue: () => setMonologueCollapsed((prev) => !prev),
     onTogglePause: (paused) => setIsPaused(paused),
     isPaused,
-    onSkipNode: () => console.log('Skip node triggered'),
-    onForkSession: () => console.log('Fork session triggered'),
-    onRetryNode: () => console.log('Retry failed node triggered'),
+    onSkipNode: handleSkipNode,
+    onForkSession: handleForkSession,
+    onRetryNode: handleRetryNode,
     sendMessage,
+    connected,
   });
 
   const onConnect: OnConnect = useCallback(
@@ -392,7 +439,7 @@ function AppInner() {
       });
 
       const newNode = {
-        id: `node-${Date.now()}-${crypto.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)}`,
+        id: `node-${Date.now()}-${generateId()}`,
         type: nodeType,
         position,
         data: { label: fileName },

@@ -58,14 +58,21 @@ describe('EdgeTypes', () => {
 
     it('applies heartbeat animation duration based on tension', () => {
       const ActiveEdge = edgeTypes.active;
-      // Low tension = slower animation (1s)
+      // Low tension = slower animation (1.5s)
       const { container: c1 } = render(<ActiveEdge {...mockEdgeProps({ tension: 0 }) as any} />);
-      // High tension = faster animation (<1s)
+      // High tension = faster animation (0.5s)
       const { container: c2 } = render(<ActiveEdge {...mockEdgeProps({ tension: 1 }) as any} />);
 
-      // Both should render without errors; heartbeat duration is computed from tension
-      expect(c1.querySelector('[role="graphics-symbol"]')).toBeTruthy();
-      expect(c2.querySelector('[role="graphics-symbol"]')).toBeTruthy();
+      const path1 = c1.querySelector('path');
+      const path2 = c2.querySelector('path');
+      expect(path1).toBeTruthy();
+      expect(path2).toBeTruthy();
+
+      // Verify heartbeat animation in style attribute (browser serializes as kebab-case)
+      const style1 = path1!.getAttribute('style') || '';
+      const style2 = path2!.getAttribute('style') || '';
+      expect(style1).toContain('animation: heartbeat 1.5s');
+      expect(style2).toMatch(/animation: heartbeat 0\.5/);
     });
   });
 
@@ -83,12 +90,30 @@ describe('EdgeTypes', () => {
 
     it('renders with dynamic stroke-width based on tension', () => {
       const TensionEdge = edgeTypes.tension;
+      // tension=0.7 → stroke-width = 3 + 0.7*3 = 5.1
       const { container: c1 } = render(<TensionEdge {...mockEdgeProps({ tension: 0.7 }) as any} />);
+      // tension=1.0 → stroke-width = 3 + 1.0*3 = 6
       const { container: c2 } = render(<TensionEdge {...mockEdgeProps({ tension: 1.0 }) as any} />);
 
-      // Both should render without errors; stroke-width is computed from tension
-      expect(c1.querySelector('[role="graphics-symbol"]')).toBeTruthy();
-      expect(c2.querySelector('[role="graphics-symbol"]')).toBeTruthy();
+      const path1 = c1.querySelector('path');
+      const path2 = c2.querySelector('path');
+      expect(path1).toBeTruthy();
+      expect(path2).toBeTruthy();
+
+      const style1 = path1!.getAttribute('style') || '';
+      const style2 = path2!.getAttribute('style') || '';
+      expect(style1).toContain('stroke-width: 5.1');
+      expect(style2).toContain('stroke-width: 6');
+    });
+
+    it('defaults to zero tension when no tension data provided', () => {
+      const TensionEdge = edgeTypes.tension;
+      const { container } = render(<TensionEdge {...mockEdgeProps() as any} />);
+      const path = container.querySelector('path');
+      expect(path).toBeTruthy();
+      const style = path!.getAttribute('style') || '';
+      // tension=0 → stroke-width = 3 + 0*3 = 3
+      expect(style).toContain('stroke-width: 3');
     });
   });
 

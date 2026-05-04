@@ -22,6 +22,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     expect(addEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
@@ -34,6 +35,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     unmount();
@@ -48,6 +50,7 @@ describe('useKeyboardShortcuts', () => {
         ...mockHandlers,
         onToggleMonologue: handler,
         isPaused: false,
+        connected: true,
       })
     );
     const event = new KeyboardEvent('keydown', { key: 'm' });
@@ -60,6 +63,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     const event = new KeyboardEvent('keydown', { key: 'p' });
@@ -73,6 +77,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     const event = new KeyboardEvent('keydown', { key: ' ' });
@@ -86,6 +91,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     const event = new KeyboardEvent('keydown', { key: 's' });
@@ -99,6 +105,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     const event = new KeyboardEvent('keydown', { key: 'f' });
@@ -112,6 +119,7 @@ describe('useKeyboardShortcuts', () => {
       useKeyboardShortcuts({
         ...mockHandlers,
         isPaused: false,
+        connected: true,
       })
     );
     const event = new KeyboardEvent('keydown', { key: 'r' });

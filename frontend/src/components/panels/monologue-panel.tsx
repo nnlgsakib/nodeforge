@@ -27,6 +27,7 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
   const [autoScroll, setAutoScroll] = useState(true);
   const [exporting, setExporting] = useState(false);
   const isRtl = useRtl();
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const announce = useAnnounce();
 
   // Announce panel open/close (Subtask 3.6)
@@ -37,6 +38,20 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
       announce('LLM Monologue Panel opened', 'polite');
     }
   }, [collapsed, announce]);
+
+  const handleClearRequest = () => {
+    if (messages.length === 0) return;
+    setShowClearConfirm(true);
+  };
+
+  const handleClearConfirm = () => {
+    setShowClearConfirm(false);
+    if (onClear) onClear();
+  };
+
+  const handleClearCancel = () => {
+    setShowClearConfirm(false);
+  };
 
   // Pre-compute display messages to avoid < in JSX context
   const displayMessages = messages.length > 100
@@ -56,12 +71,6 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
     exportMonologueAsMarkdown(messages, sessionId);
     setExporting(false);
   }, [messages, sessionId]);
-
-  const handleClear = () => {
-    if (onClear && (messages.length === 0 || window.confirm('Clear all monologue history?'))) {
-      onClear();
-    }
-  };
 
   return (
     <Dialog.Root open={!collapsed} onOpenChange={(open) => {
@@ -184,7 +193,9 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
                     }}
                     aria-hidden="true"
                   />
-                  <span aria-label="Recording in progress">REC</span>
+                  <span aria-live="polite" aria-atomic="true" style={{ marginLeft: '4px' }}>
+                    {isStreaming ? 'REC — Recording in progress' : ''}
+                  </span>
                 </span>
               )}
             </h3>
@@ -206,7 +217,7 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
                 Export
               </button>
               <button
-                onClick={handleClear}
+                onClick={handleClearRequest}
                 disabled={messages.length === 0}
                 title="Clear history"
                 style={{
@@ -239,6 +250,54 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
               </Dialog.Close>
             </div>
           </div>
+
+          {/* Clear confirmation dialog */}
+          {showClearConfirm && (
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-label="Clear monologue history"
+              style={{
+                padding: '12px 16px',
+                borderBottom: '1px solid var(--bg-tertiary)',
+                background: 'var(--bg-tertiary)',
+              }}
+            >
+              <p style={{ margin: '0 0 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                Clear all monologue history?
+              </p>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleClearCancel}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--bg-tertiary)',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    padding: '4px 12px',
+                    borderRadius: '4px',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClearConfirm}
+                  style={{
+                    background: 'var(--error)',
+                    border: 'none',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    padding: '4px 12px',
+                    borderRadius: '4px',
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Messages area */}
           <div

@@ -205,6 +205,10 @@ describe('Goal submission → Graph generation flow', () => {
     const clearBtn = screen.getByTitle('Clear history');
     fireEvent.click(clearBtn);
 
+    // Click confirm in the custom dialog (second Clear button)
+    const clearButtons = screen.getAllByRole('button', { name: 'Clear' });
+    fireEvent.click(clearButtons[1]);
+
     expect(mockOnClear).toHaveBeenCalled();
     vi.restoreAllMocks();
   });

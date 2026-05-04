@@ -9,6 +9,7 @@ interface KeyboardShortcutsOptions {
   onForkSession: () => void;
   onRetryNode: () => void;
   sendMessage: (msg: WebSocketMessage) => void;
+  connected?: boolean;
 }
 
 export function useKeyboardShortcuts({
@@ -19,9 +20,11 @@ export function useKeyboardShortcuts({
   onForkSession,
   onRetryNode,
   sendMessage,
+  connected,
 }: KeyboardShortcutsOptions) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
@@ -45,21 +48,21 @@ export function useKeyboardShortcuts({
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             onSkipNode();
-            sendMessage({ type: 'skip_node' });
+            if (connected) sendMessage({ type: 'skip_node' });
           }
           break;
         case 'f':
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             onForkSession();
-            sendMessage({ type: 'fork_session' });
+            if (connected) sendMessage({ type: 'fork_session' });
           }
           break;
         case 'r':
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             onRetryNode();
-            sendMessage({ type: 'retry_node' });
+            if (connected) sendMessage({ type: 'retry_node' });
           }
           break;
       }
