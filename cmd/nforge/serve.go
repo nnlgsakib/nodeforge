@@ -105,7 +105,18 @@ func (h *wsHub) run() {
 				delete(h.clients, client)
 			}
 			h.mu.Unlock()
-			return
+
+			// Drain unregister channel briefly — write pumps send here after exiting.
+			// The channel is never closed, so we can't range to completion; just drain
+			// for a short timeout to prevent goroutine leaks from blocking sends.
+			for {
+				select {
+				case <-h.unregister:
+					// Drained one
+				default:
+					return
+				}
+			}
 		}
 	}
 }
@@ -705,10 +716,14 @@ func runServer() error {
 	// Signal hub to stop — this closes broadcast and all client send channels
 	close(hub.done)
 
-	// Give write pumps time to drain before HTTP server shutdown
-	time.Sleep(100 * time.Millisecond)
+	// Give write pumps time to drain and unregister before HTTP server shutdown.
+	// The hub's done case closes all client.send channels, which causes write pumps
+	// to exit via their defer. The defer sends to hub.unregister, so we must give
+	// the hub time to drain those before srv.Shutdown closes connections.
+	time.Sleep(200 * time.Millisecond)
 
-	// Gracefully shut down HTTP server
+	// Gracefully shut down HTTP server (this closes hijacked WebSocket connections,
+	// unblocking read pumps that are stuck on conn.ReadMessage)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

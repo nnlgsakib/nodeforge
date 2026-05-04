@@ -176,6 +176,42 @@ func (m *Manager) GetSession(ctx context.Context, id string) (*Session, error) {
 	return &s, nil
 }
 
+// SessionStats holds session metadata and workspace statistics
+type SessionStats struct {
+	ID            string `json:"sessionId"`
+	Name          string `json:"projectName"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"createdAt"`
+	LastActiveAt  string `json:"lastActive"`
+	WorkspaceSize int64  `json:"workspaceSize"`
+}
+
+// GetSessionStats returns session metadata along with workspace size statistics
+func (m *Manager) GetSessionStats(ctx context.Context, id string) (*SessionStats, error) {
+	sess, err := m.GetSession(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.GetSessionStatsFromSession(sess)
+}
+
+// GetSessionStatsFromSession returns session metadata with workspace size, reusing an already-fetched session
+func (m *Manager) GetSessionStatsFromSession(sess *Session) (*SessionStats, error) {
+	workspaceSize, err := m.GetWorkspaceSize(sess.ID)
+	if err != nil {
+		workspaceSize = 0 // Workspace size is supplementary; don't fail the call
+	}
+
+	return &SessionStats{
+		ID:            sess.ID,
+		Name:          sess.Name,
+		Status:        string(sess.Status),
+		CreatedAt:     sess.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		LastActiveAt:  sess.LastActiveAt.Format("2006-01-02T15:04:05Z07:00"),
+		WorkspaceSize: workspaceSize,
+	}, nil
+}
+
 // UpdateSession updates a session's state (graph, chat, status)
 func (m *Manager) UpdateSession(ctx context.Context, sess *Session) error {
 	if m.db == nil {

@@ -91,17 +91,39 @@ func runListSessions(workspaceDir string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "SESSION ID\tPROJECT NAME\tSTATUS\tCREATED AT\tWORKSPACE")
-	fmt.Fprintln(w, "----------\t------------\t------\t----------\t---------")
+	fmt.Fprintln(w, "SESSION ID\tPROJECT NAME\tSTATUS\tCREATED AT\tSIZE")
+	fmt.Fprintln(w, "----------\t------------\t------\t----------\t----")
 
 	for _, s := range sessions {
 		created := s.CreatedAt.Format("2006-01-02 15:04:05")
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.ID, s.Name, s.Status, created, s.Workspace)
+		stats, err := mgr.GetSessionStatsFromSession(&s)
+		size := "-"
+		if err == nil && stats != nil {
+			size = formatBytes(stats.WorkspaceSize)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.ID, s.Name, s.Status, created, size)
 	}
 	w.Flush()
 
 	fmt.Printf("\nTotal: %d session(s)\n", len(sessions))
 	return nil
+}
+
+// formatBytes returns a human-readable representation of bytes
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	if exp >= 6 {
+		return fmt.Sprintf("%.1f EB", float64(b)/float64(div))
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func runResumeSession(workspaceDir string, id string) error {

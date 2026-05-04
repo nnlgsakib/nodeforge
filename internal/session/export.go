@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,8 @@ import (
 // excludedPatterns defines file patterns that must never be included in export tarballs.
 var excludedPatterns = []string{
 	".env",
+	".env.*",
+	".git",
 	"config.yaml",
 	".nforge",
 	"*secret*",
@@ -29,7 +32,9 @@ var excludedPatterns = []string{
 func isExcluded(relPath string) bool {
 	base := filepath.Base(relPath)
 	for _, pattern := range excludedPatterns {
-		if matched, _ := filepath.Match(pattern, base); matched {
+		if matched, err := filepath.Match(pattern, base); err != nil {
+			log.Printf("warning: invalid exclusion pattern %q: %v", pattern, err)
+		} else if matched {
 			return true
 		}
 	}
@@ -37,7 +42,9 @@ func isExcluded(relPath string) bool {
 	parts := strings.Split(filepath.ToSlash(relPath), "/")
 	for _, part := range parts {
 		for _, pattern := range excludedPatterns {
-			if matched, _ := filepath.Match(pattern, part); matched {
+			if matched, err := filepath.Match(pattern, part); err != nil {
+				log.Printf("warning: invalid exclusion pattern %q: %v", pattern, err)
+			} else if matched {
 				return true
 			}
 		}
@@ -51,19 +58,30 @@ func sanitizeGraphJSON(graphJSON string) string {
 		return "{}"
 	}
 
+	// Try as object first
 	var graph map[string]interface{}
-	if err := json.Unmarshal([]byte(graphJSON), &graph); err != nil {
-		// If not valid JSON, return empty graph rather than leak data
-		return "{}"
+	if err := json.Unmarshal([]byte(graphJSON), &graph); err == nil {
+		sanitizeMap(graph)
+		clean, err := json.Marshal(graph)
+		if err != nil {
+			return "{}"
+		}
+		return string(clean)
 	}
 
-	sanitizeMap(graph)
-
-	clean, err := json.Marshal(graph)
-	if err != nil {
-		return "{}"
+	// Try as array
+	var graphArr []interface{}
+	if err := json.Unmarshal([]byte(graphJSON), &graphArr); err == nil {
+		sanitizeSlice(graphArr)
+		clean, err := json.Marshal(graphArr)
+		if err != nil {
+			return "{}"
+		}
+		return string(clean)
 	}
-	return string(clean)
+
+	// Not valid JSON — return empty graph rather than leak data
+	return "{}"
 }
 
 // sanitizeMap recursively walks a map and redacts sensitive values.
@@ -149,7 +167,8 @@ func ExportSession(ctx context.Context, mgr *Manager, sessionID, outputPath stri
 
 	actualPath := outputPath
 	if actualPath == "" {
-		actualPath = fmt.Sprintf("%s.tar.gz", sessionID)
+		timestamp := time.Now().Format("20060102T150405")
+		actualPath = fmt.Sprintf("session-%s-%s.tar.gz", sessionID, timestamp)
 	}
 	if !strings.HasSuffix(actualPath, ".tar.gz") && !strings.HasSuffix(actualPath, ".tgz") {
 		actualPath += ".tar.gz"

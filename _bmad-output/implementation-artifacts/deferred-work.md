@@ -41,3 +41,10 @@
 - Empty string toast title renders invisible title — cosmetic edge case, unlikely in practice
 - Toast stacking on rapid success→error — low-impact UX, no dedup logic
 - No test for `m` key MonologuePanel toggle required by AC4 — test coverage gap
+
+## Deferred from: code review of 4-5-session-resume-export-cli (2026-05-04)
+
+- `formatBytes` produces nonsense for negative values — `formatBytes(-1)` returns `"-1 B"`. Workspace size cannot be negative; defensive but not required for this change.
+- `sanitizeMap` misses double-encoded JSON strings — If a sensitive value is nested inside a JSON string, it is not parsed or sanitized. Pre-existing sanitization limitation.
+- Symlink check in `addWorkspaceToTar` may not work on Windows — `filepath.Walk` symlink detection behavior differs on Windows. Pre-existing.
+- Export API uses POST instead of spec's GET — `serve.go` registers POST, spec task says GET. Dev intentionally changed to POST; pre-existing decision.
