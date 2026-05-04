@@ -106,7 +106,6 @@ describe('SessionExplorer', () => {
     });
 
     // Multiple sessions have Resume buttons; find the one within the test-suite card
-    const resumeButtons = screen.getAllByRole('button', { name: /resume/i });
     const testSuiteCard = screen.getByText(/test-suite/i).closest('.session-card');
     const testSuiteResumeButton = testSuiteCard?.querySelector('button');
     await act(async () => {

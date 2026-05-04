@@ -266,7 +266,7 @@
     flex: 1;
     padding: 8px;
     border: 1px solid var(--bg-tertiary);
-    borderRadius: 6px;
+    border-radius: 6px;
     background: var(--bg-primary);
     color: var(--text-primary);
     font-size: 13px;
@@ -277,7 +277,7 @@
     background: var(--accent);
     color: white;
     border: none;
-    borderRadius: 6px;
+    border-radius: 6px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
