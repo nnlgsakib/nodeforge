@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Switch } from './Switch';
 
 const FONT_MIN = 12;
 const FONT_MAX = 24;
@@ -47,7 +48,10 @@ export const AccessibilityToolbar: React.FC<AccessibilityToolbarProps> = ({ visi
   }, [highContrast, rtlMode, fontSize]);
 
   const handleFontSizeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setFontSize(parseInt(e.target.value, 10));
+    const parsed = parseInt(e.target.value, 10);
+    if (!Number.isNaN(parsed)) {
+      setFontSize(Math.max(FONT_MIN, Math.min(FONT_MAX, parsed)));
+    }
   }, []);
 
   if (!visible) return null;
@@ -55,7 +59,7 @@ export const AccessibilityToolbar: React.FC<AccessibilityToolbarProps> = ({ visi
   return (
     <div className="accessibility-toolbar" role="toolbar" aria-label="Accessibility settings">
       <button
-        className="accessibility-toolbar-toggle"
+        className="accessibility-toolbar-toggle cursor-pointer"
         onClick={onToggle}
         aria-label="Toggle accessibility toolbar"
         title="Accessibility"
@@ -69,15 +73,11 @@ export const AccessibilityToolbar: React.FC<AccessibilityToolbarProps> = ({ visi
           <label htmlFor="high-contrast-toggle" className="accessibility-label">
             High Contrast
           </label>
-          <button
+          <Switch
             id="high-contrast-toggle"
-            role="switch"
-            aria-checked={highContrast}
-            className={`toggle-switch ${highContrast ? 'active' : ''}`}
-            onClick={() => setHighContrast((v) => !v)}
-          >
-            <span className="toggle-switch-thumb" />
-          </button>
+            checked={highContrast}
+            onCheckedChange={setHighContrast}
+          />
         </div>
 
         {/* RTL Toggle */}
@@ -85,15 +85,11 @@ export const AccessibilityToolbar: React.FC<AccessibilityToolbarProps> = ({ visi
           <label htmlFor="rtl-toggle" className="accessibility-label">
             RTL Mode
           </label>
-          <button
+          <Switch
             id="rtl-toggle"
-            role="switch"
-            aria-checked={rtlMode}
-            className={`toggle-switch ${rtlMode ? 'active' : ''}`}
-            onClick={() => setRtlMode((v) => !v)}
-          >
-            <span className="toggle-switch-thumb" />
-          </button>
+            checked={rtlMode}
+            onCheckedChange={setRtlMode}
+          />
         </div>
 
         {/* Font Size Slider */}
@@ -108,7 +104,7 @@ export const AccessibilityToolbar: React.FC<AccessibilityToolbarProps> = ({ visi
             max={FONT_MAX}
             value={fontSize}
             onChange={handleFontSizeChange}
-            className="font-size-slider"
+            className="font-size-slider cursor-pointer"
             aria-valuemin={FONT_MIN}
             aria-valuemax={FONT_MAX}
             aria-valuenow={fontSize}

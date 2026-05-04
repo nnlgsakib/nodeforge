@@ -78,6 +78,44 @@ export default function App() {
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [isRtl, setIsRtl] = useState(false);
 
+  // Track previous node statuses to only announce changes in ARIA live region
+  const prevStatusesRef = useRef<Record<string, string>>({});
+  const [statusAnnouncements, setStatusAnnouncements] = useState<{ id: string; label: string; status: string }[]>([]);
+
+  // Timer ref for notification cleanup
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Detect node status changes and announce only changed nodes (WCAG 2.1 AA, Subtask 2.1)
+  useEffect(() => {
+    const currentStatuses: Record<string, string> = {};
+    const changed: { id: string; label: string; status: string }[] = [];
+
+    for (const node of nodes) {
+      const status = (node as any).data?.status;
+      if (status) {
+        currentStatuses[node.id] = status;
+        if (prevStatusesRef.current[node.id] !== status) {
+          const label = String((node as any).data?.label ?? node.id);
+          changed.push({ id: node.id, label, status });
+        }
+      }
+    }
+
+    if (changed.length > 0) {
+      setStatusAnnouncements(changed);
+    }
+    prevStatusesRef.current = currentStatuses;
+  }, [nodes]);
+
   // Listen for RTL mode changes from AccessibilityToolbar
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -243,7 +281,8 @@ export default function App() {
       console.error('Failed to create project:', err);
       setNotification({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     }
-    setTimeout(() => setNotification(null), 5000);
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    notificationTimerRef.current = setTimeout(() => setNotification(null), 5000);
   };
 
   const handleSendGoal = useCallback(
@@ -290,7 +329,8 @@ export default function App() {
     });
     setNodeConfigOpen(false);
     setNotification({ type: 'success', message: `Node configuration saved` });
-    setTimeout(() => setNotification(null), 3000);
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    notificationTimerRef.current = setTimeout(() => setNotification(null), 3000);
   }, [sendMessage]);
 
   // Drag-and-drop file to node creation (AC4)
@@ -346,17 +386,40 @@ export default function App() {
         type: 'success',
         message: `Created "${nodeType}" node from "${fileName}"`,
       });
-      setTimeout(() => setNotification(null), 3000);
+      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+      notificationTimerRef.current = setTimeout(() => setNotification(null), 3000);
     },
     [setNodes, screenToFlowPosition]
   );
 
   return (
     <div className="app-container">
+      {/* ARIA live region for node status changes (WCAG 2.1 AA, Subtask 2.1) */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusAnnouncements.map((announcement) => (
+          <div key={`aria-${announcement.id}`} role="status">
+            Node {announcement.label} changed to {announcement.status}
+          </div>
+        ))}
+      </div>
+
+      {/* ARIA live region for critical failures */}
+      <div aria-live="assertive" aria-atomic="true" className="sr-only">
+        {notification && notification.type === 'error' && (
+          <div role="alert">{notification.message}</div>
+        )}
+      </div>
+
       {notification && (
         <div className={`notification notification-${notification.type}`}>
           {notification.message}
-          <button className="notification-close" onClick={() => setNotification(null)}>×</button>
+          <button className="notification-close" onClick={() => {
+            if (notificationTimerRef.current) {
+              clearTimeout(notificationTimerRef.current);
+              notificationTimerRef.current = null;
+            }
+            setNotification(null);
+          }}>×</button>
         </div>
       )}
 
