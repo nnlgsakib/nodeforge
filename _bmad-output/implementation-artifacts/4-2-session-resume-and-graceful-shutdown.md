@@ -1,6 +1,6 @@
 # Story 4.2: Session Resume & Graceful Shutdown
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -145,5 +145,6 @@ tencent/hy3-preview:free
 
 ### Change Log
 
+- "Fixed 14 code review findings: removed dual signal handler race, fixed TOCTOU error detection, non-blocking broadcast, single persistLoop goroutine, clean hub shutdown, logged errors, added rows.Err() checks, snapshot captures state, executable-relative DB path, 500ms resume timeout, pruned lastBeat map, removed dead code, structured logging (Date: 2026-05-04)"
 - "Addressed code review findings - 0 items resolved (Date: 2026-05-04)"
 - "Implemented story 4.2: Session Resume & Graceful Shutdown — added resume API/CLI, graceful shutdown with session snapshots, heartbeat monitoring, zombie auto-cleanup, enhanced doctor health checks, and WebSocket reconnection support (Date: 2026-05-04)"
