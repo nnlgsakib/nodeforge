@@ -14,6 +14,7 @@ interface ChatPanelProps {
   onToggleCollapse: () => void;
   onSendGoal: (text: string) => void;
   generating: boolean;
+  onNewProject?: () => void;
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -21,6 +22,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   onToggleCollapse,
   onSendGoal,
   generating,
+  onNewProject,
 }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -82,15 +84,37 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     <div className={`chat-panel ${collapsed ? 'collapsed' : ''}`}>
       <div className="chat-header">
         <h3>Chat</h3>
-        <button
-          className="collapse-btn"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand chat' : 'Collapse chat'}
-          aria-label={collapsed ? 'Expand chat' : 'Collapse chat'}
-          style={{ transform: isRtl ? 'scaleX(-1)' : undefined }}
-        >
-          {collapsed ? (isRtl ? '←' : '→') : (isRtl ? '→' : '←')}
-        </button>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {onNewProject && (
+            <button
+              className="new-project-btn"
+              onClick={onNewProject}
+              title="New Project"
+              aria-label="Create new project"
+              style={{
+                padding: '4px 8px',
+                fontSize: '12px',
+                background: 'var(--accent)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'opacity 200ms ease-out',
+              }}
+            >
+              + New
+            </button>
+          )}
+          <button
+            className="collapse-btn"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expand chat' : 'Collapse chat'}
+            aria-label={collapsed ? 'Expand chat' : 'Collapse chat'}
+            style={{ transform: isRtl ? 'scaleX(-1)' : undefined }}
+          >
+            {collapsed ? (isRtl ? '←' : '→') : (isRtl ? '→' : '←')}
+          </button>
+        </div>
       </div>
 
       <div className="chat-messages" role="log" aria-live="polite" style={{ textAlign: isRtl ? 'right' : 'left' }}>

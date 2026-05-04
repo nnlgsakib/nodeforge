@@ -1,13 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { useSession, Session } from '../../hooks/useSession';
 import { EmptyState } from '../ui/EmptyState';
-
-interface Session {
-  sessionId: string;
-  projectName: string;
-  status: 'running' | 'complete' | 'failed' | 'paused';
-  createdAt: string;
-  lastActive: string;
-}
 
 interface SessionExplorerProps {
   onCreateProject: (projectName: string) => void;
@@ -36,39 +29,16 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
   onSelectSession,
   onStartChat,
 }) => {
+  const { sessions, loading: sessionsLoading, listSessions } = useSession();
   const [projectName, setProjectName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
-  // Fetch sessions from API
-  const fetchSessions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/v1/sessions');
-      if (!response.ok) {
-        // API not available yet (Epic 4 not implemented) - use mock data
-        console.warn('Sessions API not available, using mock data');
-        setSessions(getMockSessions());
-        return;
-      }
-      const data = await response.json();
-      setSessions(Array.isArray(data.data) ? data.data : []);
-    } catch {
-      // Fallback to mock data
-      console.warn('Failed to fetch sessions, using mock data');
-      setSessions(getMockSessions());
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+    listSessions();
+  }, [listSessions]);
 
   const handleCreate = useCallback(async () => {
     const trimmed = projectName.trim();
@@ -77,13 +47,14 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
       try {
         await onCreateProject(trimmed);
         setProjectName('');
+        await listSessions();
       } catch (err) {
         console.error('Failed to create project:', err);
       } finally {
         setIsCreating(false);
       }
     }
-  }, [projectName, isCreating, onCreateProject]);
+  }, [projectName, isCreating, onCreateProject, listSessions]);
 
   // Filter sessions
   const filteredSessions = useMemo(() => {
@@ -143,6 +114,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
           value={projectName}
           onChange={(e) => setProjectName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          aria-label="Project name"
           style={{
             width: '100%',
             padding: '8px',
@@ -158,6 +130,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
         <button
           onClick={handleCreate}
           disabled={isCreating || !projectName.trim()}
+          aria-label="Create new project"
           style={{
             width: '100%',
             padding: '8px',
@@ -168,7 +141,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
             cursor: projectName.trim() ? 'pointer' : 'not-allowed',
             fontSize: '13px',
             fontWeight: 500,
-            transition: 'background-color 200ms',
+            transition: 'background-color 200ms ease-out',
           }}
         >
           {isCreating ? 'Creating...' : 'New Project'}
@@ -244,15 +217,15 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
       </div>
 
       {/* Session List */}
-      {loading ? (
+      {sessionsLoading ? (
         <EmptyState
-          icon={<span aria-hidden="true">⏳</span>}
+          icon={<span aria-hidden="true" className="animate-spin" style={{ display: 'inline-block', fontSize: '16px' }}>&#8987;</span>}
           title="Loading sessions..."
           animated
         />
       ) : sessions.length === 0 ? (
         <EmptyState
-          icon={<span aria-hidden="true">📭</span>}
+          icon={<span aria-hidden="true">&#128230;</span>}
           title="No sessions yet"
           description="Start a new project to begin your journey"
           actionLabel="Start Chat"
@@ -269,8 +242,25 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
               key={session.sessionId}
               className="session-card"
               tabIndex={0}
+              role="button"
+              aria-label={`Session: ${session.projectName}, status: ${session.status}`}
               onClick={() => onSelectSession?.(session.sessionId)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectSession?.(session.sessionId); } }}
+              style={{
+                padding: '10px',
+                borderRadius: '6px',
+                border: '1px solid var(--bg-tertiary)',
+                cursor: 'pointer',
+                transition: 'border-color 200ms ease-out, box-shadow 200ms ease-out',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent)';
+                (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 0 1px var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--bg-tertiary)';
+                (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
+              }}
             >
               {/* Session Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -295,6 +285,21 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                 Created: {formatDate(session.createdAt)}
               </div>
+              {session.goal && (
+                <div
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '8px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={session.goal}
+                >
+                  Goal: {session.goal}
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -313,6 +318,7 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer',
+                      transition: 'opacity 200ms ease-out',
                     }}
                   >
                     Resume
@@ -358,38 +364,3 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
     </div>
   );
 };
-
-// Mock data for when API is not available
-function getMockSessions(): Session[] {
-  const now = new Date();
-  return [
-    {
-      sessionId: 'mock-1',
-      projectName: 'nfv2-auth-module',
-      status: 'complete',
-      createdAt: new Date(now.getTime() - 2 * 3600000).toISOString(),
-      lastActive: new Date(now.getTime() - 1800000).toISOString(),
-    },
-    {
-      sessionId: 'mock-2',
-      projectName: 'api-integration',
-      status: 'running',
-      createdAt: new Date(now.getTime() - 300000).toISOString(),
-      lastActive: new Date(now.getTime() - 60000).toISOString(),
-    },
-    {
-      sessionId: 'mock-3',
-      projectName: 'dashboard-refactor',
-      status: 'failed',
-      createdAt: new Date(now.getTime() - 86400000).toISOString(),
-      lastActive: new Date(now.getTime() - 82800000).toISOString(),
-    },
-    {
-      sessionId: 'mock-4',
-      projectName: 'test-suite',
-      status: 'paused',
-      createdAt: new Date(now.getTime() - 7 * 86400000).toISOString(),
-      lastActive: new Date(now.getTime() - 2 * 86400000).toISOString(),
-    },
-  ];
-}

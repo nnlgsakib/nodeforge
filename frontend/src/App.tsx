@@ -534,6 +534,12 @@ function AppInner() {
         onToggleCollapse={() => setChatCollapsed((prev) => !prev)}
         onSendGoal={handleSendGoal}
         generating={chatGenerating}
+        onNewProject={() => {
+          const name = prompt('Enter project name:');
+          if (name && name.trim()) {
+            handleCreateProject(name.trim());
+          }
+        }}
       />
 
       <MonologuePanel

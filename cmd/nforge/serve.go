@@ -259,7 +259,12 @@ func runServer() error {
 	})
 
 	// Initialize session manager and register API routes
-	sessionMgr := session.NewManager(".")
+	sessionMgr, err := session.NewManager(".")
+	if err != nil {
+		fmt.Printf("Warning: failed to initialize session manager: %v\n", err)
+	} else {
+		defer sessionMgr.Close()
+	}
 	canvas.RegisterAPIRoutes(r, sessionMgr)
 	registerSkillRoutes(r)
 
@@ -277,6 +282,9 @@ func runServer() error {
 		defer store.Close()
 		hub.store = store
 	}
+
+	// Register monologue route (needs hub.store to be set)
+	registerSessionMonologueRoute(r, hub, sessionMgr)
 
 	// Initialize LLM providers
 	var providers []llm.LLMProvider
@@ -457,25 +465,6 @@ func runServer() error {
 	// Metrics endpoint (Prometheus placeholder)
 	r.GET("/metrics", func(c *gin.Context) {
 		c.String(200, "# Prometheus metrics placeholder - full implementation in Story 6.5\nws_connections_total %d\n", hub.ClientCount())
-	})
-
-	// Get monologue history for a session
-	r.GET("/api/v1/sessions/:id/monologue", func(c *gin.Context) {
-		sessionID := c.Param("id")
-		if sessionID == "" {
-			c.JSON(400, gin.H{"error": "missing session ID"})
-			return
-		}
-		if hub.store == nil {
-			c.JSON(500, gin.H{"error": "store not available"})
-			return
-		}
-		messages, err := hub.store.GetMonologueHistory(c.Request.Context(), sessionID)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "failed to get monologue history"})
-			return
-		}
-		c.JSON(200, messages)
 	})
 
 	// Serve embedded frontend

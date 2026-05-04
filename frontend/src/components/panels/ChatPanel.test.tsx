@@ -215,4 +215,29 @@ describe('ChatPanel', () => {
       expect(screen.getByText('second goal update')).toBeTruthy();
     });
   });
+
+  describe('new project button', () => {
+    it('should render New Project button when onNewProject is provided', () => {
+      const handleNewProject = vi.fn();
+      render(<ChatPanel {...defaultProps} onNewProject={handleNewProject} />);
+
+      expect(screen.getByRole('button', { name: /create new project/i })).toBeInTheDocument();
+    });
+
+    it('should not render New Project button when onNewProject is not provided', () => {
+      render(<ChatPanel {...defaultProps} />);
+
+      expect(screen.queryByRole('button', { name: /create new project/i })).not.toBeInTheDocument();
+    });
+
+    it('should call onNewProject when button is clicked', () => {
+      const handleNewProject = vi.fn();
+      render(<ChatPanel {...defaultProps} onNewProject={handleNewProject} />);
+
+      const newProjectBtn = screen.getByRole('button', { name: /create new project/i });
+      fireEvent.click(newProjectBtn);
+
+      expect(handleNewProject).toHaveBeenCalledTimes(1);
+    });
+  });
 });

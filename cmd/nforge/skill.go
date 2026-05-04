@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nnlgsakib/nodeforge/internal/session"
 	"github.com/nnlgsakib/nodeforge/internal/skills"
 	"github.com/spf13/cobra"
 )
@@ -173,6 +174,26 @@ func init() {
 		},
 	}
 	skillCmd.AddCommand(installCmd)
+}
+
+func registerSessionMonologueRoute(r *gin.Engine, hub *wsHub, sessionMgr *session.Manager) {
+	r.GET("/api/v1/sessions/:id/monologue", func(c *gin.Context) {
+		sessionID := c.Param("id")
+		if sessionID == "" {
+			c.JSON(400, gin.H{"error": "missing session ID"})
+			return
+		}
+		if hub.store == nil {
+			c.JSON(500, gin.H{"error": "store not available"})
+			return
+		}
+		messages, err := hub.store.GetMonologueHistory(c.Request.Context(), sessionID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "failed to get monologue history"})
+			return
+		}
+		c.JSON(200, messages)
+	})
 }
 
 func registerSkillRoutes(r *gin.Engine) {
