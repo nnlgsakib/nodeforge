@@ -6,6 +6,7 @@ import {
   NODE_COLORS,
   STATUS_COLORS,
 } from '../../types/nodes';
+import { useTheme } from '../../hooks/use-theme';
 
 interface NodeData {
   label?: string;
@@ -18,7 +19,33 @@ function getNodeData(data: NodeProps['data']): NodeData {
 }
 
 // Resolve effective colors: status override wins, otherwise node type colors
-function resolveColors(nodeType: string, status?: NodeStatus) {
+function resolveColors(nodeType: string, status?: NodeStatus, isHighContrast?: boolean) {
+  // High-contrast mode override (AC:1, Subtask 1.6)
+  if (isHighContrast) {
+    const hcColors: Record<string, string> = {
+      goal: '#00ff00',
+      spec: '#00aaff',
+      plan: '#ff00ff',
+      implement: '#ff8800',
+      test: '#ffff00',
+      review: '#00ffff',
+    };
+    const bg = hcColors[nodeType] || '#ffffff';
+    const statusOverride = status && status !== 'pending';
+    const effectiveBg = statusOverride
+      ? status === 'failed' ? '#ff0000'
+      : status === 'running' ? '#ffff00'
+      : status === 'complete' ? '#00ff00'
+      : bg
+      : bg;
+    return {
+      background: effectiveBg,
+      border: `2px solid ${effectiveBg}`,
+      borderColor: effectiveBg,
+      boxShadow: `0 0 12px ${effectiveBg}`,
+    };
+  }
+
   const typeColors = NODE_COLORS[nodeType as keyof typeof NODE_COLORS];
   const statusColors = STATUS_COLORS[status || 'pending'];
 
@@ -95,8 +122,9 @@ function ProgressBar({ progress }: { progress: number }) {
 // Goal Node - Green rounded rectangle, input pin only
 const GoalNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = getNodeData(data);
-  const colors = resolveColors('goal', nodeData.status);
-  const textColor = nodeData.status === 'pending' ? '#1a1b1e' : 'white';
+  const { isHighContrast: hc } = useTheme();
+  const colors = resolveColors('goal', nodeData.status, hc);
+  const textColor = hc ? '#000000' : (nodeData.status === 'pending' ? '#1a1b1e' : 'white');
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -119,7 +147,7 @@ const GoalNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         outlineOffset: '2px',
       }}
       role="group"
-      aria-label={`Goal node: ${nodeData.label || 'Goal'}`}
+      aria-label={`Node ${nodeData.label || 'Goal'}, status: ${nodeData.status || 'pending'}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -141,7 +169,9 @@ const GoalNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
 // Spec Node - Blue diamond shape, input/output pins
 const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = getNodeData(data);
-  const colors = resolveColors('spec', nodeData.status);
+  const { isHighContrast: hc } = useTheme();
+  const colors = resolveColors('spec', nodeData.status, hc);
+  const textColor = hc ? '#000000' : 'white';
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -159,14 +189,14 @@ const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: 'white',
+        color: textColor,
         fontWeight: 600,
         fontSize: '14px',
         outline: selected ? '2px solid white' : 'none',
         outlineOffset: '4px',
       }}
       role="group"
-      aria-label={`Spec node: ${nodeData.label || 'Spec'}`}
+      aria-label={`Node ${nodeData.label || 'Spec'}, status: ${nodeData.status || 'pending'}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -183,6 +213,7 @@ const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         style={{ ...handleStyle(colors.borderColor), transform: 'rotate(-45deg)' }}
         aria-label="Spec output"
       />
+
       <StatusAnnouncer status={nodeData.status} label="Spec" />
     </div>
   );
@@ -191,8 +222,9 @@ const SpecNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
 // Plan Node - Purple rounded rectangle, input/output pins
 const PlanNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = getNodeData(data);
-  const colors = resolveColors('plan', nodeData.status);
-  const textColor = nodeData.status === 'pending' ? '#1a1b1e' : 'white';
+  const { isHighContrast: hc } = useTheme();
+  const colors = resolveColors('plan', nodeData.status, hc);
+  const textColor = hc ? '#000000' : (nodeData.status === 'pending' ? '#1a1b1e' : 'white');
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -215,7 +247,7 @@ const PlanNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         outlineOffset: '2px',
       }}
       role="group"
-      aria-label={`Plan node: ${nodeData.label || 'Plan'}`}
+      aria-label={`Node ${nodeData.label || 'Plan'}, status: ${nodeData.status || 'pending'}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -243,8 +275,9 @@ const PlanNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
 // Implement Node - Orange rectangle, input/output pins
 const ImplementNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = getNodeData(data);
-  const colors = resolveColors('implement', nodeData.status);
-  const textColor = nodeData.status === 'pending' ? '#1a1b1e' : 'white';
+  const { isHighContrast: hc } = useTheme();
+  const colors = resolveColors('implement', nodeData.status, hc);
+  const textColor = hc ? '#000000' : (nodeData.status === 'pending' ? '#1a1b1e' : 'white');
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -267,7 +300,7 @@ const ImplementNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         outlineOffset: '2px',
       }}
       role="group"
-      aria-label={`Implement node: ${nodeData.label || 'Implement'}`}
+      aria-label={`Node ${nodeData.label || 'Implement'}, status: ${nodeData.status || 'pending'}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -295,9 +328,9 @@ const ImplementNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
 // Test Node - Yellow rounded rectangle, input/output pins
 const TestNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = getNodeData(data);
-  const colors = resolveColors('test', nodeData.status);
-  const textColor =
-    nodeData.status === 'pending' || nodeData.status === 'running' ? '#1a1b1e' : 'white';
+  const { isHighContrast: hc } = useTheme();
+  const colors = resolveColors('test', nodeData.status, hc);
+  const textColor = hc ? '#000000' : (nodeData.status === 'pending' || nodeData.status === 'running' ? '#1a1b1e' : 'white');
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -320,7 +353,7 @@ const TestNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         outlineOffset: '2px',
       }}
       role="group"
-      aria-label={`Test node: ${nodeData.label || 'Test'}`}
+      aria-label={`Node ${nodeData.label || 'Test'}, status: ${nodeData.status || 'pending'}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -348,8 +381,9 @@ const TestNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
 // Review Node - Cyan rectangle, input/output pins
 const ReviewNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = getNodeData(data);
-  const colors = resolveColors('review', nodeData.status);
-  const textColor = nodeData.status === 'pending' ? '#1a1b1e' : 'white';
+  const { isHighContrast: hc } = useTheme();
+  const colors = resolveColors('review', nodeData.status, hc);
+  const textColor = hc ? '#000000' : (nodeData.status === 'pending' ? '#1a1b1e' : 'white');
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -372,7 +406,7 @@ const ReviewNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         outlineOffset: '2px',
       }}
       role="group"
-      aria-label={`Review node: ${nodeData.label || 'Review'}`}
+      aria-label={`Node ${nodeData.label || 'Review'}, status: ${nodeData.status || 'pending'}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >

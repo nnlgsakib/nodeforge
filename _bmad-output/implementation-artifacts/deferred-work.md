@@ -27,3 +27,10 @@
 - Web Worker never terminated on unmount — pre-existing issue in `useLayoutWorker.ts`
 - `useKeyboardShortcuts` global 'p' key conflicts with CanvasControls Ctrl+p — pre-existing, not introduced by this diff
 - Notification timeout not cleared on unmount — pre-existing pattern in App.tsx
+
+## Deferred from: code review of story-3.6-accessibility (2026-05-04)
+
+- Keyboard handler attaches to `document` as fallback — pre-existing, not introduced by this diff [CanvasControls.tsx:150-158]
+- `handleClear` confirms even when messages empty — pre-existing logic issue [monologue-panel.tsx:57-60]
+- `displayMessages` slice creates stale key references — pre-existing, minor DOM churn [monologue-panel.tsx:39-41]
+- Subtask 4.7 node creation/deletion/connection via keyboard — substantial UX feature, better scoped as its own story. Mark 4.7 as partially done [NodeTypes.tsx, CanvasControls.tsx]

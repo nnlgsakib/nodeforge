@@ -86,23 +86,50 @@
     outline-offset: 2px;
   }
 
-  /* High Contrast Theme */
+  /* High Contrast Theme (AC:1, UX-DR14, NFR-21) */
   :root.high-contrast {
     --bg-primary: #000000;
-    --bg-secondary: #1a1a1a;
-    --bg-tertiary: #333333;
+    --bg-secondary: #0a0a0a;
+    --bg-tertiary: #1a1a1a;
     --text-primary: #ffffff;
-    --text-secondary: #cccccc;
-    --accent: #00ff00;
+    --text-secondary: #e0e0e0;
+    --accent: #00ffff;
     --success: #00ff00;
     --error: #ff0000;
     --warning: #ffff00;
+
+    /* High-contrast node colors */
+    --node-goal: #00ff00;
+    --node-spec: #00aaff;
+    --node-plan: #ff00ff;
+    --node-implement: #ff8800;
+    --node-test: #ffff00;
+    --node-review: #00ffff;
+
+    /* High-contrast edge colors */
+    --edge-default: #cccccc;
+    --edge-active: #00ffff;
+    --edge-tension: #ff0000;
+    --edge-success: #00ff00;
   }
 
-  /* RTL Mode */
+  /* RTL Mode (AC:2, UX-DR15, NFR-22) */
   :root[dir="rtl"] {
     direction: rtl;
     text-align: right;
+  }
+
+  /* Screen reader only utility */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
@@ -405,7 +432,7 @@
     background-color: var(--bg-tertiary);
   }
 
-  /* RTL overrides */
+  /* RTL overrides (AC:2) */
   :root[dir="rtl"] .sidebar {
     border-right: none;
     border-left: 1px solid var(--bg-tertiary);
@@ -416,13 +443,33 @@
     left: 20px;
   }
 
-  /* High contrast overrides */
+  :root[dir="rtl"] .chat-panel {
+    right: auto;
+    left: 0;
+    border-right: none;
+    border-left: 1px solid var(--bg-tertiary);
+  }
+
+  :root[dir="rtl"] .minimap-container {
+    right: auto;
+    left: 16px;
+  }
+
+  :root[dir="rtl"] .monologue-panel-content {
+    right: auto;
+    left: 0;
+    border-right: none;
+    border-left: 1px solid var(--bg-tertiary);
+  }
+
+  /* High contrast overrides (AC:1) */
   :root.high-contrast .skill-card {
     border-color: #333;
   }
 
   :root.high-contrast .skill-card:hover {
     border-color: #00ff00;
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.4);
   }
 
   :root.high-contrast .toggle-switch.active {
@@ -432,5 +479,48 @@
 
   :root.high-contrast .toggle-switch-thumb {
     background-color: #000000;
+  }
+
+  :root.high-contrast .notification {
+    border: 2px solid #fff;
+  }
+
+  :root.high-contrast .collapse-btn {
+    border-color: #cccccc;
+  }
+
+  :root.high-contrast .collapse-btn:hover {
+    background-color: #333;
+    border-color: #00ffff;
+  }
+
+  :root.high-contrast input,
+  :root.high-contrast select {
+    border-color: #cccccc !important;
+    background-color: #0a0a0a !important;
+    color: #ffffff !important;
+  }
+
+  :root.high-contrast button {
+    border-color: #cccccc !important;
+  }
+
+  :root.high-contrast button:not(:disabled):hover {
+    border-color: #00ffff !important;
+  }
+
+  /* Focus indicator for high contrast */
+  :root.high-contrast *:focus-visible {
+    outline: 2px solid #00ffff;
+    outline-offset: 2px;
+  }
+
+  /* Prefers reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

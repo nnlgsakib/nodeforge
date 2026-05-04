@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MiniMap, Controls, useReactFlow, type Node } from '@xyflow/react';
+import { useRtl } from '../../hooks/use-rtl';
 
 interface CanvasControlsProps {
   nodes: Node[];
@@ -58,6 +59,7 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ nodes, edges }) 
   const [showKeybindings, setShowKeybindings] = useState(false);
   const { setViewport, getViewport } = useReactFlow();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const isRtl = useRtl();
 
   const nodeCount = nodes.length;
   const edgeCount = edges.length;
@@ -163,10 +165,11 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ nodes, edges }) 
       gap: '8px',
       position: 'absolute',
       bottom: '16px',
-      left: '16px',
+      left: isRtl ? 'auto' : '16px',
+      right: isRtl ? '16px' : 'auto',
       zIndex: 10,
     }}>
-      {/* MiniMap with heat visualization */}
+      {/* MiniMap with heat visualization (Subtask 2.3) */}
       <div style={{
         background: 'var(--bg-secondary)',
         borderRadius: '8px',
@@ -244,7 +247,7 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ nodes, edges }) 
         Keys
       </button>
 
-      {/* Keybinding hints panel */}
+      {/* Keybinding hints panel (Subtask 4.6) */}
       {showKeybindings && (
         <div
           style={{
@@ -257,6 +260,8 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ nodes, edges }) 
             fontFamily: 'JetBrains Mono, monospace',
             minWidth: '220px',
           }}
+          role="region"
+          aria-label="Canvas controls, Vim keys: hjkl"
         >
           <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 600 }}>Canvas Navigation</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -277,6 +282,25 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ nodes, edges }) 
                 <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px', marginLeft: '4px' }}>Ctrl-n</kbd> next
                 <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px', marginLeft: '4px' }}>Ctrl-p</kbd> prev
               </div>
+            </div>
+          </div>
+          <h4 style={{ margin: '12px 0 8px 0', fontSize: '13px', fontWeight: 600 }}>Node Controls</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-secondary)' }}>
+            <div>
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px' }}>p</kbd> / <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px' }}>Space</kbd> pause/resume
+            </div>
+            <div>
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px' }}>r</kbd> retry
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px', marginLeft: '4px' }}>f</kbd> fork
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px', marginLeft: '4px' }}>s</kbd> skip
+            </div>
+            <div>
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px' }}>m</kbd> toggle monologue
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px', marginLeft: '4px' }}>Esc</kbd> close panel
+            </div>
+            <div>
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px' }}>Tab</kbd> cycle nodes
+              <kbd style={{ padding: '1px 4px', background: 'var(--bg-tertiary)', borderRadius: '3px', fontSize: '11px', marginLeft: '4px' }}>Enter</kbd> open config
             </div>
           </div>
         </div>

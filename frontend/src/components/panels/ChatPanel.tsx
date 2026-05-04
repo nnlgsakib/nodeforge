@@ -1,4 +1,6 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useAnnounce } from '../../hooks/use-announce';
+import { useRtl } from '../../hooks/use-rtl';
 
 interface ChatMessage {
   id: string;
@@ -29,6 +31,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     },
   ]);
   const validationMsgRef = useRef<HTMLDivElement>(null);
+  const announce = useAnnounce();
+  const isRtl = useRtl();
+
+  // Announce panel open/close (Subtask 3.6)
+  useEffect(() => {
+    if (collapsed) {
+      announce('Chat panel closed', 'polite');
+    } else {
+      announce('Chat panel opened', 'polite');
+    }
+  }, [collapsed, announce]);
 
   const inputLength = input.trim().length;
   const isValidInput = inputLength >= 10 && inputLength <= 500;
@@ -74,12 +87,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           onClick={onToggleCollapse}
           title={collapsed ? 'Expand chat' : 'Collapse chat'}
           aria-label={collapsed ? 'Expand chat' : 'Collapse chat'}
+          style={{ transform: isRtl ? 'scaleX(-1)' : undefined }}
         >
-          {collapsed ? '→' : '←'}
+          {collapsed ? (isRtl ? '←' : '→') : (isRtl ? '→' : '←')}
         </button>
       </div>
 
-      <div className="chat-messages" role="log" aria-live="polite">
+      <div className="chat-messages" role="log" aria-live="polite" style={{ textAlign: isRtl ? 'right' : 'left' }}>
         {messages.map((msg) => (
           <div key={msg.id} className={`chat-message ${msg.role} ${msg.isGenerating ? 'generating' : ''}`}>
             {msg.isGenerating ? (

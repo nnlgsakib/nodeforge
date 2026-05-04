@@ -19,12 +19,16 @@ import { ChatPanel } from './components/panels/ChatPanel';
 import { MonologuePanel } from './components/panels/monologue-panel';
 import { SkillMarketplace } from './components/panels/skill-marketplace';
 import { AccessibilityToolbar } from './components/ui/AccessibilityToolbar';
+import { AriaAnnouncer } from './components/ui/aria-announcer';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { PhaseBands } from './components/canvas/PhaseBands';
 import { NodeConfig } from './components/panels/node-config';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLayoutWorker } from './hooks/useLayoutWorker';
+import { useAnnounce } from './hooks/use-announce';
+import { useKeyboardNav } from './hooks/use-keyboard-nav';
+import { useRtl } from './hooks/use-rtl';
 
 // P8: Hoisted outside component to avoid recreation every render
 const FILE_TO_NODE_TYPE: Record<string, string> = {
@@ -76,11 +80,11 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [accessibilityVisible, setAccessibilityVisible] = useState(false);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
-  const [isRtl, setIsRtl] = useState(false);
+  const isRtl = useRtl();
 
   // Track previous node statuses to only announce changes in ARIA live region
   const prevStatusesRef = useRef<Record<string, string>>({});
-  const [statusAnnouncements, setStatusAnnouncements] = useState<{ id: string; label: string; status: string }[]>([]);
+  const announce = useAnnounce();
 
   // Timer ref for notification cleanup
   const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,7 +98,7 @@ export default function App() {
     };
   }, []);
 
-  // Detect node status changes and announce only changed nodes (WCAG 2.1 AA, Subtask 2.1)
+  // Detect node status changes and announce via ARIA live regions (AC:3, Subtask 3.3-3.4)
   useEffect(() => {
     const currentStatuses: Record<string, string> = {};
     const changed: { id: string; label: string; status: string }[] = [];
@@ -111,20 +115,28 @@ export default function App() {
     }
 
     if (changed.length > 0) {
-      setStatusAnnouncements(changed);
+      // Announce status changes via ARIA live regions (Subtask 3.3, 3.4)
+      for (const change of changed) {
+        const msg = `Node ${change.label} changed to ${change.status}`;
+        if (change.status === 'failed') {
+          announce(`Node ${change.label} failed`, 'assertive');
+        } else {
+          announce(msg, 'polite');
+        }
+      }
+
+      // Check for graph completion (Subtask 3.5)
+      const terminalStatuses = new Set(['complete', 'failed', 'skipped']);
+      const allTerminal = nodes.length > 0 && nodes.every((n) => {
+        const status = (n as any).data?.status;
+        return !status || terminalStatuses.has(status);
+      });
+      if (allTerminal) {
+        announce('All nodes complete! Session completed successfully', 'polite');
+      }
     }
     prevStatusesRef.current = currentStatuses;
   }, [nodes]);
-
-  // Listen for RTL mode changes from AccessibilityToolbar
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsRtl(document.documentElement.dir === 'rtl');
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['dir'] });
-    setIsRtl(document.documentElement.dir === 'rtl');
-    return () => observer.disconnect();
-  }, []);
 
   // WebSocket connection
   const {
@@ -303,22 +315,30 @@ export default function App() {
     setNodeConfigOpen(true);
   }, []);
 
-  // Open NodeConfig with Enter key on selected node
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
+  // Keyboard navigation: Tab cycling, Escape close, Enter activate (Subtask 4.4, 4.5)
+  useKeyboardNav({
+    nodeIds: nodes.map((n) => n.id),
+    onSelectNode: (nodeId) => setSelectedNodeId(nodeId),
+    selectedNodeId,
+    onKeyAction: (action) => {
+      if (action === 'escape') {
+        // Close any open panel/dialog
+        if (nodeConfigOpen) {
+          setNodeConfigOpen(false);
+        }
+        if (!monologueCollapsed) {
+          setMonologueCollapsed(true);
+        }
+        if (!chatCollapsed) {
+          setChatCollapsed(true);
+        }
       }
-      if (e.key === 'Enter' && selectedNodeId) {
-        e.preventDefault();
+      if (action === 'activate' && selectedNodeId) {
         setNodeConfigNodeId(selectedNodeId);
         setNodeConfigOpen(true);
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId]);
+    },
+  });
 
   const handleNodeConfigSave = useCallback((nodeId: string, config: { timeout: number; retryCount: number; tokenBudget: number }) => {
     // Send config via WebSocket message
@@ -393,22 +413,8 @@ export default function App() {
   );
 
   return (
-    <div className="app-container">
-      {/* ARIA live region for node status changes (WCAG 2.1 AA, Subtask 2.1) */}
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {statusAnnouncements.map((announcement) => (
-          <div key={`aria-${announcement.id}`} role="status">
-            Node {announcement.label} changed to {announcement.status}
-          </div>
-        ))}
-      </div>
-
-      {/* ARIA live region for critical failures */}
-      <div aria-live="assertive" aria-atomic="true" className="sr-only">
-        {notification && notification.type === 'error' && (
-          <div role="alert">{notification.message}</div>
-        )}
-      </div>
+    <AriaAnnouncer>
+      <div className="app-container">
 
       {notification && (
         <div className={`notification notification-${notification.type}`}>
@@ -469,7 +475,10 @@ export default function App() {
         <SessionExplorer onCreateProject={handleCreateProject} />
       </div>
 
-      <div className="main-content" style={{ marginTop: '24px' }} ref={reactFlowWrapper}>
+      <div className="main-content" style={{
+        marginTop: '24px',
+        transform: isRtl ? 'scaleX(-1)' : undefined,
+      }} ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
           nodeTypes={nodeTypes}
@@ -533,5 +542,6 @@ export default function App() {
       {/* Accessibility Toolbar */}
       <AccessibilityToolbar visible={accessibilityVisible} onToggle={() => setAccessibilityVisible((v) => !v)} />
     </div>
+    </AriaAnnouncer>
   );
 }

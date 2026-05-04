@@ -1,0 +1,33 @@
+/* High-contrast mode CSS overrides (AC:1, Subtask 1.5)
+ * These are applied when :root.high-contrast class is present.
+ * Most styling is handled via CSS custom properties in index.css.
+ */
+
+:root.high-contrast {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+:root.high-contrast .react-flow__background {
+  background-color: #000000;
+}
+
+:root.high-contrast .react-flow__background-pattern rect {
+  fill: #333333;
+}
+
+:root.high-contrast .react-flow__controls-button {
+  background-color: #0a0a0a;
+  border-color: #cccccc;
+  color: #ffffff;
+}
+
+:root.high-contrast .react-flow__controls-button:hover {
+  background-color: #1a1a1a;
+  border-color: #00ffff;
+}
+
+:root.high-contrast .react-flow__minimap {
+  background-color: #0a0a0a;
+  border-color: #cccccc;
+}

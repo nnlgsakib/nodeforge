@@ -1,0 +1,41 @@
+/* RTL mode CSS overrides (AC:2, Subtask 2.2-2.5)
+ * Applied when document.documentElement.dir === 'rtl'
+ */
+
+/* RTL canvas: scaleX(-1) transform is handled in ReactFlow component */
+
+/* RTL: MiniMap moves to bottom-left */
+:root[dir="rtl"] .react-flow__minimap {
+  right: auto;
+  left: 16px;
+}
+
+/* RTL: Panel slide directions flip */
+:root[dir="rtl"] .monologue-panel-slide {
+  right: auto;
+  left: 0;
+  transform: translateX(100%);
+}
+
+:root[dir="rtl"] .monologue-panel-slide-open {
+  transform: translateX(0);
+}
+
+/* RTL: Chat panel alignment */
+:root[dir="rtl"] .chat-panel {
+  right: auto;
+  left: 0;
+  border-right: none;
+  border-left: 1px solid var(--bg-tertiary);
+}
+
+/* RTL: Text alignment in panels */
+:root[dir="rtl"] .panel-text {
+  text-align: right;
+}
+
+/* RTL: Flip CanvasControls button layout */
+:root[dir="rtl"] .canvas-controls {
+  left: auto;
+  right: 16px;
+}

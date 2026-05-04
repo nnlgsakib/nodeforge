@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { exportMonologueAsMarkdown } from '../../utils/monologue-export';
 import type { MonologueMessage } from '../../hooks/useWebSocket';
+import { useAnnounce } from '../../hooks/use-announce';
+import { useRtl } from '../../hooks/use-rtl';
 
 interface MonologuePanelProps {
   collapsed: boolean;
@@ -23,6 +25,17 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const isRtl = useRtl();
+  const announce = useAnnounce();
+
+  // Announce panel open/close (Subtask 3.6)
+  useEffect(() => {
+    if (collapsed) {
+      announce('LLM Monologue Panel closed', 'polite');
+    } else {
+      announce('LLM Monologue Panel opened', 'polite');
+    }
+  }, [collapsed, announce]);
 
   // Pre-compute display messages to avoid < in JSX context
   const displayMessages = messages.length > 100
@@ -88,21 +101,27 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
           }}
         />
         <Dialog.Content
+          className="monologue-panel-content"
           style={{
             position: 'fixed',
             top: 0,
-            right: 0,
+            right: isRtl ? 'auto' : 0,
+            left: isRtl ? 0 : 'auto',
             bottom: 0,
             width: '400px',
             background: 'var(--bg-secondary)',
-            borderLeft: '1px solid var(--bg-tertiary)',
+            borderLeft: isRtl ? 'none' : '1px solid var(--bg-tertiary)',
+            borderRight: isRtl ? '1px solid var(--bg-tertiary)' : 'none',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 50,
-            transform: collapsed ? 'translateX(100%)' : 'translateX(0)',
+            transform: collapsed ? (isRtl ? 'translateX(-100%)' : 'translateX(100%)') : 'translateX(0)',
             transition: 'transform 0.3s ease',
-            boxShadow: '-4px 0 24px rgba(0,0,0,0.15)',
+            boxShadow: isRtl ? '4px 0 24px rgba(0,0,0,0.15)' : '-4px 0 24px rgba(0,0,0,0.15)',
           }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="LLM Monologue Panel, open"
         >
           <Dialog.Title style={{
             position: 'absolute',
@@ -215,6 +234,7 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
               padding: '16px',
               fontSize: '13px',
               lineHeight: 1.6,
+              textAlign: isRtl ? 'right' : 'left',
             }}
             onScroll={(e) => {
               const target = e.target as HTMLDivElement;
@@ -222,6 +242,9 @@ export const MonologuePanel: React.FC<MonologuePanelProps> = ({
                 target.scrollHeight - target.scrollTop - target.clientHeight < 50;
               setAutoScroll(isAtBottom);
             }}
+            role="log"
+            aria-live="polite"
+            aria-label="Monologue messages"
           >
             {messages.length === 0 ? (
               <div

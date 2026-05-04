@@ -5,6 +5,7 @@ import {
   getSmoothStepPath,
   type EdgeProps,
 } from '@xyflow/react';
+import { useTheme } from '../../hooks/use-theme';
 import {
   type AppEdgeData,
   LONG_PRESS_DURATION,
@@ -19,6 +20,16 @@ interface EdgeTooltipProps {
   y: number;
   data: AppEdgeData;
 }
+
+// Check if high-contrast mode is active (Subtask 1.7) — replaced by useTheme hook in components
+
+// High-contrast edge colors (AC:1)
+const HC_COLORS = {
+  default: '#cccccc',
+  active: '#00ffff',
+  tension: '#ff0000',
+  success: '#00ff00',
+};
 
 // Tooltip showing edge metadata on hover
 const EdgeTooltip: React.FC<EdgeTooltipProps> = ({ x, y, data }) => {
@@ -253,15 +264,16 @@ const EdgeWrapper: React.FC<EdgeWrapperProps> = ({
 
 // Default Edge - #94a3b8, 2px stroke, no animation
 const DefaultEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
+  const { isHighContrast: hc } = useTheme();
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
   return (
     <EdgeWrapper
       id={id}
-      ariaLabel={`Edge from ${id} - default`}
+      ariaLabel={`Edge from ${source} to ${target}, status: default`}
       showTooltip={interaction.showTooltip}
       showBubble={interaction.showBubble}
       tooltipPos={interaction.tooltipPos}
@@ -272,7 +284,7 @@ const DefaultEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: '#94a3b8', strokeWidth: selected ? 3 : 2, ...style }}
+        style={{ stroke: hc ? HC_COLORS.default : '#94a3b8', strokeWidth: selected ? 3 : 2, ...style }}
       />
     </EdgeWrapper>
   );
@@ -280,15 +292,16 @@ const DefaultEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
 
 // Active Edge - #06b6d4, 3px stroke, animated dash flow
 const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
+  const { isHighContrast: hc } = useTheme();
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
   return (
     <EdgeWrapper
       id={id}
-      ariaLabel={`Edge from ${id} - active (flowing)`}
+      ariaLabel={`Edge from ${source} to ${target}, status: active (flowing)`}
       showTooltip={interaction.showTooltip}
       showBubble={interaction.showBubble}
       tooltipPos={interaction.tooltipPos}
@@ -299,7 +312,7 @@ const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: '#06b6d4', strokeWidth: selected ? 4 : 3, strokeDasharray: '12 6', animation: 'flow 1s linear infinite', ...style }}
+        style={{ stroke: hc ? HC_COLORS.active : '#06b6d4', strokeWidth: selected ? 4 : 3, strokeDasharray: '12 6', animation: 'flow 1s linear infinite', ...style }}
       />
       <style>{`@keyframes flow { to { stroke-dashoffset: -18; } }`}</style>
     </EdgeWrapper>
@@ -308,15 +321,16 @@ const ActiveEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
 
 // Tension Edge - #ef4444, 4px stroke
 const TensionEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
+  const { isHighContrast: hc } = useTheme();
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
   return (
     <EdgeWrapper
       id={id}
-      ariaLabel={`Edge from ${id} - tension (upstream failure)`}
+      ariaLabel={`Edge from ${source} to ${target}, status: tension (upstream failure)`}
       showTooltip={interaction.showTooltip}
       showBubble={interaction.showBubble}
       tooltipPos={interaction.tooltipPos}
@@ -327,7 +341,7 @@ const TensionEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: '#ef4444', strokeWidth: selected ? 5 : 4, strokeDasharray: selected ? '8 4' : '16 8', opacity: selected ? 1 : 0.7, transition: 'stroke-dasharray 0.3s ease, opacity 0.3s ease', ...style }}
+        style={{ stroke: hc ? HC_COLORS.tension : '#ef4444', strokeWidth: selected ? 5 : 4, strokeDasharray: selected ? '8 4' : '16 8', opacity: selected ? 1 : 0.7, transition: 'stroke-dasharray 0.3s ease, opacity 0.3s ease', ...style }}
       />
     </EdgeWrapper>
   );
@@ -335,15 +349,16 @@ const TensionEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
 
 // Success Edge - #22c55e, 2px stroke, brief pulse on completion
 const SuccessEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, data, selected } = props;
   const interaction = useEdgeInteraction();
+  const { isHighContrast: hc } = useTheme();
 
   const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
   return (
     <EdgeWrapper
       id={id}
-      ariaLabel={`Edge from ${id} - success (completed)`}
+      ariaLabel={`Edge from ${source} to ${target}, status: success (completed)`}
       showTooltip={interaction.showTooltip}
       showBubble={interaction.showBubble}
       tooltipPos={interaction.tooltipPos}
@@ -354,7 +369,7 @@ const SuccessEdgeComponent: React.FC<TypedEdgeProps> = (props) => {
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: '#22c55e', strokeWidth: selected ? 3 : 2, animation: 'pulse-success 0.6s ease-out', ...style }}
+        style={{ stroke: hc ? HC_COLORS.success : '#22c55e', strokeWidth: selected ? 3 : 2, animation: 'pulse-success 0.6s ease-out', ...style }}
       />
       <style>{`@keyframes pulse-success { 0% { stroke-width: 2; opacity: 1; } 50% { stroke-width: 4; opacity: 0.8; } 100% { stroke-width: 2; opacity: 1; } }`}</style>
     </EdgeWrapper>
