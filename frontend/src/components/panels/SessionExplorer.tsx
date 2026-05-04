@@ -348,22 +348,37 @@ export const SessionExplorer: React.FC<SessionExplorerProps> = ({
                 >
                   Fork
                 </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onExportSession?.(session.sessionId);
-                  }}
-                  className="btn-secondary"
-                  style={{
-                    flex: 1,
-                    padding: '4px 8px',
-                    fontSize: '11px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Export
-                </button>
+                {/* Export button: visible when session is complete (all nodes green) */}
+                {session.status === 'complete' && onExportSession && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExportSession(session.sessionId);
+                    }}
+                    aria-label={`Export session ${session.projectName}`}
+                    style={{
+                      flex: 1,
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      background: 'transparent',
+                      color: '#22C55E',
+                      border: '1px solid #22C55E',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'background-color 200ms ease-out, color 200ms ease-out',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background = '#22C55E';
+                      (e.currentTarget as HTMLButtonElement).style.color = '#020617';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                      (e.currentTarget as HTMLButtonElement).style.color = '#22C55E';
+                    }}
+                  >
+                    Export
+                  </button>
+                )}
               </div>
             </div>
           ))}

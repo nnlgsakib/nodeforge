@@ -25,6 +25,7 @@ type Manager struct {
 	workspaceRoot string
 	db            *sql.DB
 	mu            sync.Mutex
+	quota         QuotaConfig
 }
 
 // NewManager creates a new session manager with SQLite backend.
@@ -41,7 +42,7 @@ func NewManager(workspaceRoot string) (*Manager, error) {
 		return nil, fmt.Errorf("failed to open session database: %w", err)
 	}
 
-	return &Manager{workspaceRoot: workspaceRoot, db: db}, nil
+	return &Manager{workspaceRoot: workspaceRoot, db: db, quota: DefaultQuotaConfig()}, nil
 }
 
 // CreateSessionWithName creates a new session with the specified name
@@ -59,6 +60,19 @@ func (m *Manager) CreateSessionWithName(ctx context.Context, name string) (*Sess
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Enforce session quota (FR38) — inside lock to prevent TOCTOU race
+	quotaCtx := ctx
+	if quotaCtx == nil {
+		quotaCtx = context.Background()
+	}
+	count, err := m.countSessions(quotaCtx)
+	if err != nil {
+		return nil, err
+	}
+	if count > m.quota.MaxSessions {
+		return nil, fmt.Errorf("session quota exceeded: maximum %d sessions reached (NFR-17)", m.quota.MaxSessions)
+	}
 
 	// Check for duplicate project name
 	var exists bool
@@ -129,6 +143,17 @@ func (m *Manager) ListSessions(ctx context.Context) ([]Session, error) {
 		sessions = append(sessions, s)
 	}
 	return sessions, rows.Err()
+}
+
+// countSessions returns the total number of sessions without acquiring the mutex.
+// Callers must hold m.mu if they need atomicity with subsequent operations.
+func (m *Manager) countSessions(ctx context.Context) (int, error) {
+	var count int
+	err := m.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count sessions: %w", err)
+	}
+	return count, nil
 }
 
 // GetSession returns a single session by ID

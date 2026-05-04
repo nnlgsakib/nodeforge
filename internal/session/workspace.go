@@ -87,6 +87,15 @@ func (m *Manager) EnsureWorkspaceDir(sessionID string) error {
 
 // WriteWorkspaceFile writes a file to the session's workspace with directory traversal protection
 func (m *Manager) WriteWorkspaceFile(sessionID, relativePath string, content []byte) error {
+	// Check workspace size quota before writing (NFR-17)
+	// Lock during check to narrow TOCTOU window
+	m.mu.Lock()
+	err := m.checkWorkspaceSize(sessionID)
+	m.mu.Unlock()
+	if err != nil {
+		return err
+	}
+
 	workspaceDir, err := m.WorkspacePath(sessionID)
 	if err != nil {
 		return err

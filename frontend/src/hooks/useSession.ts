@@ -33,6 +33,7 @@ interface UseSessionReturn {
   getSession: (sessionId: string) => Promise<Session | null>;
   autoSaveSession: (sessionId: string, data: { graphJson?: string; chatLog?: string; status?: string }) => Promise<Session | null>;
   resumeSession: (sessionId: string) => Promise<Session | null>;
+  exportSession: (sessionId: string) => Promise<void>;
 }
 
 export function useSession(): UseSessionReturn {
@@ -214,6 +215,41 @@ export function useSession(): UseSessionReturn {
     }
   }, [cleanup, currentSession]);
 
+  const exportSession = useCallback(async (sessionId: string) => {
+    cleanup();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+
+    try {
+      const response = await fetch(`/api/v1/sessions/${sessionId}/export`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Export failed' }));
+        throw new Error(err.error || 'Failed to export session');
+      }
+      // Trigger browser download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${sessionId}.tar.gz`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError(err.message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }, [cleanup]);
+
   return {
     sessions,
     currentSession,
@@ -224,5 +260,6 @@ export function useSession(): UseSessionReturn {
     getSession,
     autoSaveSession,
     resumeSession,
+    exportSession,
   };
 }

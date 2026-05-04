@@ -1,6 +1,7 @@
 package nforge
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -370,6 +371,30 @@ func runServer() error {
 		// Record heartbeat
 		hbMon.Beat(id)
 		c.JSON(200, sess)
+	})
+
+	// Export endpoint: POST /api/v1/sessions/:id/export
+	r.POST("/api/v1/sessions/:id/export", func(c *gin.Context) {
+		id := c.Param("id")
+
+		// Validate session ID format to prevent header injection
+		if _, err := sessionMgr.GetSession(c.Request.Context(), id); err != nil {
+			c.JSON(404, gin.H{"error": "session not found"})
+			return
+		}
+
+		// Buffer export before sending headers to avoid partial/corrupt responses
+		var buf bytes.Buffer
+		if err := session.ExportSessionToWriter(c.Request.Context(), sessionMgr, id, &buf); err != nil {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("failed to export session: %v", err)})
+			return
+		}
+
+		// Only set headers after successful export
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.tar.gz", id))
+		c.Header("Content-Type", "application/gzip")
+		c.Header("Content-Length", fmt.Sprintf("%d", buf.Len()))
+		c.Writer.Write(buf.Bytes())
 	})
 
 	// WebSocket upgrader
