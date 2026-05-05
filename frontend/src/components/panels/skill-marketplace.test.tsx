@@ -211,6 +211,12 @@ describe('SkillMarketplace', () => {
         expect(screen.getByText('Code Review')).toBeTruthy();
       });
 
+      // Changing sort triggers a new fetch - mock it
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSkills),
+      });
+
       const sortSelect = screen.getByLabelText('Sort skills by');
       await act(async () => {
         fireEvent.change(sortSelect, { target: { value: 'rating' } });
@@ -234,6 +240,12 @@ describe('SkillMarketplace', () => {
         expect(screen.getByText('Code Review')).toBeTruthy();
       });
 
+      // Changing sort triggers a new fetch - mock it
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSkills),
+      });
+
       const sortSelect = screen.getByLabelText('Sort skills by');
       await act(async () => {
         fireEvent.change(sortSelect, { target: { value: 'installs' } });
@@ -255,15 +267,32 @@ describe('SkillMarketplace', () => {
       render(<SkillMarketplace {...defaultProps} />);
 
       await waitFor(() => {
-        expect(screen.getByText('No Skills Installed')).toBeTruthy();
+        expect(screen.getByText('No Skills Available')).toBeTruthy();
       });
     });
 
     it('should show no match empty state when search returns no results', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockSkills),
+      // Initial skills load
+      mockFetch.mockImplementationOnce(async (url) => {
+        if (url.includes('/api/v1/skills') && !url.includes('config')) {
+          return {
+            ok: true,
+            json: () => Promise.resolve({ skills: mockSkills.skills }),
+          };
+        }
+        return { ok: false };
       });
+
+      // Config load (silently ignored by component)
+      mockFetch.mockImplementationOnce(async () => ({
+        ok: false,
+      }));
+
+      // Search call
+      mockFetch.mockImplementationOnce(async () => ({
+        ok: true,
+        json: () => Promise.resolve({ skills: [] }),
+      }));
 
       render(<SkillMarketplace {...defaultProps} />);
 
@@ -276,7 +305,10 @@ describe('SkillMarketplace', () => {
         fireEvent.change(searchInput, { target: { value: 'zzznonexistent' } });
       });
 
-      expect(screen.getByText('No skills match your search')).toBeTruthy();
+      // Wait for debounced search (300ms) + render
+      await waitFor(() => {
+        expect(screen.getByText('No Skills Available')).toBeTruthy();
+      }, { timeout: 2000 });
     });
   });
 });

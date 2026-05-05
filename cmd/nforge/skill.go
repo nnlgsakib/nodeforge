@@ -1,6 +1,7 @@
 package nforge
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -63,6 +64,8 @@ var installedSkills = make(map[string]bool)
 var installedMu sync.RWMutex
 var abRunner = skills.NewABTestRunner()
 var skillWSHub *wsHub // reference to WebSocket hub for broadcasting
+var skillRegistryClient *skills.RegistryClient
+var skillStore *skills.Store // SQLite-backed store for installed skills
 
 func init() {
 	// Register A/B test for code-review skill
@@ -79,6 +82,52 @@ func init() {
 
 	// Load skills from filesystem if internal/skills/ directory exists
 	loadSkillsFromFS()
+
+	// Initialize remote registry client
+	registryURL := os.Getenv("NFORGE_SKILL_REGISTRY_URL")
+	apiKey := os.Getenv("NFORGE_SKILL_REGISTRY_API_KEY")
+
+	// Try loading API key from config file if not in env
+	if apiKey == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			cfgPath := filepath.Join(home, ".nforge", "skill-config.json")
+			if data, err := os.ReadFile(cfgPath); err == nil {
+				var cfg struct {
+					APIKey string `json:"apiKey"`
+				}
+				if json.Unmarshal(data, &cfg) == nil && cfg.APIKey != "" {
+					apiKey = cfg.APIKey
+				}
+			}
+		}
+	}
+
+	skillRegistryClient = skills.NewRegistryClient(registryURL, "")
+	if apiKey != "" {
+		skillRegistryClient.SetAPIKey(apiKey)
+	}
+
+	// Initialize SQLite store for installed skills
+	var err error
+	skillStore, err = skills.NewStore("")
+	if err != nil {
+		// Log warning but continue with in-memory fallback
+		fmt.Printf("Warning: skills database unavailable (%v), using in-memory store\n", err)
+	} else {
+		// Migrate pre-installed skills to SQLite
+		if !skillStore.IsInstalled("skill-code-review") {
+			_ = skillStore.Insert("skill-code-review", "1.0.0")
+		}
+		// Sync in-memory map from SQLite for backward compatibility
+		installedList, err := skillStore.List()
+		if err == nil {
+			installedMu.Lock()
+			for _, sk := range installedList {
+				installedSkills[sk.SkillID] = true
+			}
+			installedMu.Unlock()
+		}
+	}
 }
 
 // loadSkillsFromFS scans internal/skills/ for skill.json manifests and registers them.
@@ -127,6 +176,29 @@ func init() {
 		Use:   "list",
 		Short: "List available skills",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			searchFlag, _ := cmd.Flags().GetString("search")
+			categoryFlag, _ := cmd.Flags().GetString("category")
+			// Try fetching from registry client
+			if skillRegistryClient != nil {
+				sk, err := skillRegistryClient.FetchSkills(categoryFlag, searchFlag)
+				if err == nil {
+					for _, s := range sk {
+						installedMu.RLock()
+						installed := installedSkills[s.ID]
+						installedMu.RUnlock()
+						installedMark := ""
+						if installed {
+							installedMark = " (installed)"
+						}
+						fmt.Printf("  %s - %s v%s%s\n", s.Name, s.ID, s.Version, installedMark)
+					}
+					return nil
+				}
+				// Fallback to local if registry fails
+				fmt.Printf("Warning: registry unavailable (%v), showing local skills\n", err)
+			}
+
+			// Fallback to local in-memory registry
 			ids := make([]string, 0, len(skillRegistry))
 			for id := range skillRegistry {
 				ids = append(ids, id)
@@ -144,6 +216,8 @@ func init() {
 		},
 	}
 	skillCmd.AddCommand(listCmd)
+	listCmd.Flags().StringP("search", "s", "", "Search skills by name or description")
+	listCmd.Flags().StringP("category", "c", "", "Filter skills by category")
 
 	installCmd := &cobra.Command{
 		Use:   "install <skill-id>",
@@ -151,7 +225,18 @@ func init() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			skillID := args[0]
+
+			fmt.Printf("Fetching manifest for %q...\n", skillID)
+
 			depTree, err := skills.ResolveDependencies(skillID, func(id string) (*skills.SkillManifest, error) {
+				// Try registry client first
+				if skillRegistryClient != nil {
+					s, err := skillRegistryClient.FetchSkill(id)
+					if err == nil {
+						return s, nil
+					}
+				}
+				// Fallback to local registry
 				s, ok := skillRegistry[id]
 				if !ok {
 					return nil, skills.ErrSkillNotFound
@@ -161,11 +246,35 @@ func init() {
 			if err != nil {
 				return fmt.Errorf("resolve dependencies: %w", err)
 			}
+
+			fmt.Printf("Installing dependencies:\n")
+			for i, id := range depTree {
+				fmt.Printf("  [%d/%d] %s\n", i+1, len(depTree), id)
+			}
+
+			fmt.Println("Installing skills...")
+			// Pre-fetch versions outside the lock to avoid blocking reads during HTTP calls
+			versions := make(map[string]string)
+			for _, id := range depTree {
+				if !installedSkills[id] {
+					if m, err := skillRegistryClient.FetchSkill(id); err == nil && m != nil {
+						versions[id] = m.Version
+					} else if lm, ok := skillRegistry[id]; ok {
+						versions[id] = lm.Version
+					}
+				}
+			}
 			installedMu.Lock()
 			for _, id := range depTree {
 				if !installedSkills[id] {
 					installedSkills[id] = true
+					// Persist to SQLite if available
+					if skillStore != nil {
+						_ = skillStore.Insert(id, versions[id])
+					}
 					fmt.Printf("  installed: %s\n", id)
+				} else {
+					fmt.Printf("  already installed: %s\n", id)
 				}
 			}
 			installedMu.Unlock()
@@ -200,28 +309,101 @@ func registerSkillRoutes(r *gin.Engine) {
 	api := r.Group("/api/v1/skills")
 	{
 		api.GET("", listSkills)
+		api.GET("/:id", getSkill)
 		api.POST("/install", installSkill)
+		api.GET("/config", getSkillConfig)
+		api.POST("/config/apikey", setSkillAPIKey)
 		api.GET("/abtest", getABTestMetrics)
 		api.POST("/abtest/select", selectABTestVariant)
 		api.POST("/abtest/metrics", recordABTestMetrics)
 	}
 }
 
-// listSkills returns all available skills from the registry.
+// listSkills returns all available skills, fetching from the remote registry with fallback to local cache.
 func listSkills(c *gin.Context) {
 	category := c.Query("category")
+	search := c.Query("search")
+	sortBy := c.Query("sort")     // rating|downloads|name
+	refresh := c.Query("refresh") // "1" to bypass cache
 
+	// Try fetching from remote registry client
+	var allSkills []skills.SkillManifest
+	var err error
+	if skillRegistryClient != nil {
+		if refresh == "1" {
+			allSkills, err = skillRegistryClient.FetchSkillsFresh(category, search)
+		} else {
+			allSkills, err = skillRegistryClient.FetchSkills(category, search)
+		}
+	} else {
+		err = fmt.Errorf("registry client not initialized")
+	}
+	if err != nil || len(allSkills) == 0 {
+		if err != nil {
+			fmt.Printf("Warning: registry client failed (%v), falling back to local skills\n", err)
+		}
+		// Fallback to local in-memory registry
+		allSkills = getLocalSkills(category, search)
+	}
+
+	// Ensure we never return nil slice (would serialize as null)
+	if allSkills == nil {
+		allSkills = []skills.SkillManifest{}
+	}
+
+	result := buildSkillResponse(allSkills)
+
+	// Apply sorting
+	sortSkills(result, sortBy)
+
+	c.JSON(http.StatusOK, gin.H{"skills": result})
+}
+
+// getLocalSkills returns skills from the in-memory registry as fallback.
+func getLocalSkills(category, search string) []skills.SkillManifest {
 	installedMu.RLock()
-	var result []gin.H
+	defer installedMu.RUnlock()
+
+	result := make([]skills.SkillManifest, 0)
 	for _, s := range skillRegistry {
 		if category != "" && s.Category != category {
 			continue
 		}
-		installed := installedSkills[s.ID]
+		if search != "" {
+			q := search
+			match := strings.Contains(strings.ToLower(s.Name), strings.ToLower(q)) ||
+				strings.Contains(strings.ToLower(s.Description), strings.ToLower(q))
+			for _, t := range s.Tags {
+				if strings.Contains(strings.ToLower(t), strings.ToLower(q)) {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		result = append(result, *s)
+	}
+	return result
+}
+
+// buildSkillResponse converts SkillManifest slice to API response format.
+func buildSkillResponse(sk []skills.SkillManifest) []gin.H {
+	result := make([]gin.H, 0, len(sk))
+	for _, s := range sk {
 		deps := s.Dependencies
 		if deps == nil {
 			deps = []string{}
 		}
+		tags := s.Tags
+		if tags == nil {
+			tags = []string{}
+		}
+		installedMu.RLock()
+		installed := installedSkills[s.ID]
+		installedMu.RUnlock()
+
 		result = append(result, gin.H{
 			"id":           s.ID,
 			"name":         s.Name,
@@ -233,19 +415,111 @@ func listSkills(c *gin.Context) {
 			"ratingCount":  s.RatingCount,
 			"downloads":    s.Downloads,
 			"icon":         s.Icon,
-			"tags":         s.Tags,
+			"tags":         tags,
 			"dependencies": deps,
 			"installed":    installed,
 		})
 	}
+	return result
+}
+
+// sortSkills applies sorting to the response based on the sort parameter.
+func sortSkills(result []gin.H, sortBy string) {
+	switch sortBy {
+	case "rating":
+		sort.Slice(result, func(i, j int) bool {
+			ri, _ := result[i]["rating"].(float64)
+			rj, _ := result[j]["rating"].(float64)
+			return ri > rj
+		})
+	case "downloads", "installs":
+		sort.Slice(result, func(i, j int) bool {
+			di, _ := result[i]["downloads"].(int)
+			dj, _ := result[j]["downloads"].(int)
+			return di > dj
+		})
+	default: // name
+		sort.Slice(result, func(i, j int) bool {
+			ni, _ := result[i]["name"].(string)
+			nj, _ := result[j]["name"].(string)
+			return ni < nj
+		})
+	}
+}
+
+// getSkill returns a single skill by ID.
+func getSkill(c *gin.Context) {
+	skillID := c.Param("id")
+	if skillID == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "missing skill ID"})
+		return
+	}
+
+	// Try fetching from remote registry client
+	var skill *skills.SkillManifest
+	var fetchErr error
+	if skillRegistryClient != nil {
+		skill, fetchErr = skillRegistryClient.FetchSkill(skillID)
+	} else {
+		fetchErr = fmt.Errorf("registry client not initialized")
+	}
+	if fetchErr == nil {
+		deps := skill.Dependencies
+		if deps == nil {
+			deps = []string{}
+		}
+		installedMu.RLock()
+		installed := installedSkills[skill.ID]
+		installedMu.RUnlock()
+
+		c.JSON(http.StatusOK, gin.H{
+			"id":           skill.ID,
+			"name":         skill.Name,
+			"version":      skill.Version,
+			"description":  skill.Description,
+			"author":       skill.Author,
+			"category":     skill.Category,
+			"rating":       skill.Rating,
+			"ratingCount":  skill.RatingCount,
+			"downloads":    skill.Downloads,
+			"icon":         skill.Icon,
+			"tags":         skill.Tags,
+			"dependencies": deps,
+			"installed":    installed,
+		})
+		return
+	}
+
+	// Fallback to local registry
+	installedMu.RLock()
+	s, ok := skillRegistry[skillID]
+	installed := installedSkills[skillID]
 	installedMu.RUnlock()
 
-	// Sort by name for stable response
-	sort.Slice(result, func(i, j int) bool {
-		return result[i]["name"].(string) < result[j]["name"].(string)
-	})
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "skill not found"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"skills": result})
+	deps := s.Dependencies
+	if deps == nil {
+		deps = []string{}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":           s.ID,
+		"name":         s.Name,
+		"version":      s.Version,
+		"description":  s.Description,
+		"author":       s.Author,
+		"category":     s.Category,
+		"rating":       s.Rating,
+		"ratingCount":  s.RatingCount,
+		"downloads":    s.Downloads,
+		"icon":         s.Icon,
+		"tags":         s.Tags,
+		"dependencies": deps,
+		"installed":    installed,
+	})
 }
 
 // installSkill installs a skill and its dependencies.
@@ -262,8 +536,16 @@ func installSkill(c *gin.Context) {
 		return
 	}
 
-	// Resolve dependency tree
+	// Resolve dependency tree using registry client
 	depTree, err := skills.ResolveDependencies(req.SkillID, func(id string) (*skills.SkillManifest, error) {
+		// Try registry client first
+		if skillRegistryClient != nil {
+			s, err := skillRegistryClient.FetchSkill(id)
+			if err == nil {
+				return s, nil
+			}
+		}
+		// Fallback to local registry
 		s, ok := skillRegistry[id]
 		if !ok {
 			return nil, fmt.Errorf("skill %q not found in registry", id)
@@ -280,10 +562,28 @@ func installSkill(c *gin.Context) {
 	}
 
 	installed := []string{}
+	// Pre-fetch versions outside the lock to avoid blocking reads during HTTP calls
+	versions := make(map[string]string)
+	installedMu.RLock()
+	for _, id := range depTree {
+		if !installedSkills[id] {
+			if m, err := skillRegistryClient.FetchSkill(id); err == nil && m != nil {
+				versions[id] = m.Version
+			} else if lm, ok := skillRegistry[id]; ok {
+				versions[id] = lm.Version
+			}
+		}
+	}
+	installedMu.RUnlock()
+
 	installedMu.Lock()
 	for _, id := range depTree {
 		if !installedSkills[id] {
 			installedSkills[id] = true
+			// Persist to SQLite if available
+			if skillStore != nil {
+				_ = skillStore.Insert(id, versions[id])
+			}
 			installed = append(installed, id)
 		}
 	}
@@ -359,4 +659,54 @@ func recordABTestMetrics(c *gin.Context) {
 
 	abRunner.RecordMetrics(req.SkillID, req.VariantID, req.Success, req.Duration, req.Tokens)
 	c.JSON(http.StatusOK, gin.H{"message": "metrics recorded"})
+}
+
+// getSkillConfig returns the current skill registry configuration (API key masked).
+func getSkillConfig(c *gin.Context) {
+	apiKey := ""
+	if skillRegistryClient != nil {
+		apiKey = skillRegistryClient.GetAPIKey()
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"apiKey": apiKey,
+	})
+}
+
+// setSkillAPIKey saves the SkillsMP API key for authenticated registry access.
+func setSkillAPIKey(c *gin.Context) {
+	var req struct {
+		APIKey string `json:"apiKey" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "apiKey is required"})
+		return
+	}
+
+	if skillRegistryClient == nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "registry client not initialized"})
+		return
+	}
+
+	skillRegistryClient.SetAPIKey(req.APIKey)
+
+	// Persist to config file
+	cfgPath := filepath.Join(os.Getenv("HOME"), ".nforge", "skill-config.json")
+	if home, err := os.UserHomeDir(); err == nil {
+		cfgPath = filepath.Join(home, ".nforge", "skill-config.json")
+	}
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to create config directory"})
+		return
+	}
+	cfgData, err := json.Marshal(gin.H{"apiKey": req.APIKey})
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to marshal config"})
+		return
+	}
+	if err := os.WriteFile(cfgPath, cfgData, 0o600); err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to save API key"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "API key saved successfully"})
 }

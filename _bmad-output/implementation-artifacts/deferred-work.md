@@ -48,3 +48,13 @@
 - `sanitizeMap` misses double-encoded JSON strings — If a sensitive value is nested inside a JSON string, it is not parsed or sanitized. Pre-existing sanitization limitation.
 - Symlink check in `addWorkspaceToTar` may not work on Windows — `filepath.Walk` symlink detection behavior differs on Windows. Pre-existing.
 - Export API uses POST instead of spec's GET — `serve.go` registers POST, spec task says GET. Dev intentionally changed to POST; pre-existing decision.
+
+## Deferred from: code review of 5-1-skill-marketplace-and-dynamic-fetch (2026-05-05)
+
+- close(hub.done) panics if runServer called twice [cmd/nforge/serve.go:719] — pre-existing
+- Shutdown sleep 200ms may be insufficient under load [cmd/nforge/serve.go:722] — pre-existing
+- Hub drain loop busy-spins without yielding [cmd/nforge/serve.go:112-119] — pre-existing
+- sanitizeGraphJSON returns "{}" for non-JSON data, potentially losing valid content [internal/session/export.go:56-85] — pre-existing
+- addWorkspaceToTar symlink handling inconsistent on Windows [internal/session/export.go:259-333] — pre-existing
+- ExportSession cleanup doesn't close file before remove on error [internal/session/export.go:181-189] — pre-existing
+- formatBytes produces nonsense for negative values [cmd/nforge/session.go:113-126] — pre-existing

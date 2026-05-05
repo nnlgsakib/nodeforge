@@ -6,7 +6,7 @@
 # story_location: _bmad-output/implementation-artifacts
 
 generated: 2026-05-03T16:00:00+0600
-last_updated: 2026-05-04T23:30:00+0600
+last_updated: 2026-05-05T01:00:00+0600
 project: nfv2
 project_key: NOKEY
 tracking_system: file-system
@@ -80,12 +80,12 @@ development_status:
         4-4-session-export-and-quotas: done
         4-5-session-resume-export-cli: done
         epic-4-retrospective: optional
-        epic-5: backlog
-        5-1-skill-marketplace-and-dynamic-fetch: backlog
-        5-2-skill-dependencies-and-sandboxing: backlog
-        5-3-grpc-plugins-and-sub-nodes: backlog
-        5-4-mcp-server-for-ai-orchestration: backlog
-        5-5-a-b-testing-skills: backlog
+        epic-5: in-progress
+        5-1-skill-marketplace-and-dynamic-fetch: done
+        5-2-skill-dependencies-and-sandboxing: ready-for-dev
+        5-3-grpc-plugins-and-sub-nodes: ready-for-dev
+        5-4-mcp-server-for-ai-orchestration: ready-for-dev
+        5-5-a-b-testing-skills: ready-for-dev
         epic-5-retrospective: optional
         epic-6: backlog
         6-1-api-key-encryption-and-secret-management: backlog
@@ -104,3 +104,4 @@ development_status:
         7-5-cli-documentation-and-help-system: backlog
         7-6-video-tutorials-and-interactive-demos: backlog
         epic-7-retrospective: optional
+

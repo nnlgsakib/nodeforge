@@ -416,7 +416,7 @@
 
   .skill-marketplace-panel {
     width: 90%;
-    max-width: 900px;
+    max-width: 960px;
     max-height: 85vh;
     background-color: var(--bg-secondary);
     border: 1px solid var(--bg-tertiary);
@@ -429,9 +429,44 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     border-bottom: 1px solid var(--bg-tertiary);
     padding-bottom: 12px;
+  }
+
+  .skill-marketplace-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .skill-marketplace-icon {
+    color: var(--accent);
+  }
+
+  .skill-marketplace-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .skill-marketplace-settings {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 200ms, background-color 200ms, border-color 200ms;
+  }
+
+  .skill-marketplace-settings:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+    border-color: var(--bg-tertiary);
   }
 
   .skill-marketplace-header h2 {
@@ -443,16 +478,129 @@
 
   .skill-marketplace-close {
     background: none;
-    border: none;
+    border: 1px solid transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 24px;
-    padding: 4px 8px;
-    line-height: 1;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 200ms, background-color 200ms, border-color 200ms;
   }
 
   .skill-marketplace-close:hover {
     color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+    border-color: var(--bg-tertiary);
+  }
+
+  .skill-marketplace-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .skill-marketplace-search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+
+  .skill-marketplace-search-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+
+  .skill-marketplace-search {
+    flex: 1;
+    padding: 8px 12px 8px 34px;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: border-color 200ms;
+  }
+
+  .skill-marketplace-search:focus {
+    border-color: var(--accent);
+  }
+
+  .skill-marketplace-refresh {
+    background: none;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 200ms, border-color 200ms, background-color 200ms;
+  }
+
+  .skill-marketplace-refresh:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background-color: var(--bg-tertiary);
+  }
+
+  .skill-marketplace-refresh:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .skill-marketplace-category-filter {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .category-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 16px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 200ms;
+  }
+
+  .category-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  .category-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  .skill-marketplace-sort-row {
+    display: flex;
+    align-items: center;
+  }
+
+  .skill-marketplace-sort {
+    padding: 6px 10px;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 200ms;
+  }
+
+  .skill-marketplace-sort:focus {
+    border-color: var(--accent);
   }
 
   .skill-marketplace-grid {
@@ -467,12 +615,439 @@
     border-radius: 10px;
     padding: 16px;
     cursor: pointer;
-    transition: border-color 200ms ease, transform 200ms ease;
+    transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
   }
 
   .skill-card:hover {
     border-color: var(--accent);
     transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.1);
+  }
+
+  /* Skeleton loading state */
+  .skill-card-skeleton {
+    pointer-events: none;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .skill-icon-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background-color: var(--bg-secondary);
+  }
+
+  .skill-title-placeholder {
+    flex: 1;
+    height: 16px;
+    border-radius: 4px;
+    background-color: var(--bg-secondary);
+  }
+
+  .skill-description-placeholder {
+    height: 32px;
+    border-radius: 4px;
+    background-color: var(--bg-secondary);
+    margin: 12px 0;
+  }
+
+  .skill-tags-placeholder {
+    height: 20px;
+    border-radius: 4px;
+    background-color: var(--bg-secondary);
+    margin-bottom: 12px;
+  }
+
+  .skill-author-placeholder {
+    width: 80px;
+    height: 12px;
+    border-radius: 4px;
+    background-color: var(--bg-secondary);
+  }
+
+  .skill-install-placeholder {
+    width: 70px;
+    height: 28px;
+    border-radius: 6px;
+    background-color: var(--bg-secondary);
+  }
+
+  /* Error and empty states */
+  .skill-marketplace-error,
+  .skill-marketplace-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    gap: 8px;
+  }
+
+  .skill-marketplace-error svg {
+    color: var(--warning);
+  }
+
+  .skill-marketplace-error h3,
+  .skill-marketplace-empty h3 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--text-primary);
+  }
+
+  .skill-marketplace-error p,
+  .skill-marketplace-empty p {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .skill-marketplace-retry {
+    margin-top: 12px;
+    padding: 8px 20px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 200ms;
+  }
+
+  .skill-marketplace-retry:hover {
+    background-color: #0891b2;
+  }
+
+  /* Card internal styles */
+  .skill-card-header {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .skill-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .skill-card-title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .skill-card-title h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .skill-version {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .skill-description {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .skill-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .skill-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+  }
+
+  .star {
+    color: var(--text-secondary);
+  }
+
+  .star-full {
+    color: #f59e0b;
+  }
+
+  .star-half {
+    color: #f59e0b;
+  }
+
+  .star-empty {
+    color: var(--bg-secondary);
+  }
+
+  .skill-rating-count {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .skill-tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .skill-tag {
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .skill-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid var(--bg-secondary);
+  }
+
+  .skill-footer-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .skill-author {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .skill-downloads {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .skill-installed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: var(--success);
+    color: white;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .skill-install-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background-color 200ms;
+  }
+
+  .skill-install-btn:hover:not(:disabled) {
+    background: #0891b2;
+  }
+
+  .skill-install-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  /* Settings Modal */
+  .skill-settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .skill-settings-modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 24px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .skill-settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .skill-settings-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .skill-settings-header button {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    transition: color 200ms;
+  }
+
+  .skill-settings-header button:hover {
+    color: var(--text-primary);
+  }
+
+  .skill-settings-description {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .skill-settings-description a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .skill-settings-description a:hover {
+    text-decoration: underline;
+  }
+
+  .skill-settings-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .skill-api-key-input {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    overflow: hidden;
+    transition: border-color 200ms;
+  }
+
+  .skill-api-key-input:focus-within {
+    border-color: var(--accent);
+  }
+
+  .skill-api-key-input input {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-family-mono);
+    outline: none;
+  }
+
+  .skill-api-key-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    transition: color 200ms;
+  }
+
+  .skill-api-key-toggle:hover {
+    color: var(--text-primary);
+  }
+
+  .skill-settings-save {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background-color 200ms;
+  }
+
+  .skill-settings-save:hover:not(:disabled) {
+    background: #0891b2;
+  }
+
+  .skill-settings-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .skill-settings-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 12px 0 0;
+    font-size: 12px;
+  }
+
+  .skill-settings-status.success {
+    color: var(--success);
+  }
+
+  .skill-settings-status.error {
+    color: var(--error);
   }
 
   /* Session Explorer */
